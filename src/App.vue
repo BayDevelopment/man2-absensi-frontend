@@ -1,85 +1,64 @@
 <script setup>
-import { RouterLink, RouterView } from 'vue-router'
-import HelloWorld from './components/HelloWorld.vue'
+import { computed } from "vue";
+import { useRoute } from "vue-router";
+import Navbar from "./components/AppNavbar.vue";
+import Footer from "./components/AppFooter.vue";
+
+const route = useRoute();
+
+// Route yang TIDAK tampilkan navbar & footer
+const hiddenLayoutRoutes = ["/login", "/register", "/lupa-password"];
+
+const showLayout = computed(() => {
+  return !hiddenLayoutRoutes.includes(route.path);
+});
 </script>
 
 <template>
-  <header>
-    <img alt="Vue logo" class="logo" src="@/assets/logo.svg" width="125" height="125" />
+  <div class="app-wrapper">
+    <!-- Navbar hanya tampil kalau bukan halaman login -->
+    <Navbar v-if="showLayout" />
 
-    <div class="wrapper">
-      <HelloWorld msg="You did it!" />
+    <!-- Main content -->
+    <main class="app-main" :class="{ 'no-layout': !showLayout }">
+      <RouterView />
+    </main>
 
-      <nav>
-        <RouterLink to="/">Home</RouterLink>
-        <RouterLink to="/about">About</RouterLink>
-      </nav>
-    </div>
-  </header>
-
-  <RouterView />
+    <!-- Footer hanya tampil kalau bukan halaman login -->
+    <Footer v-if="showLayout" />
+  </div>
 </template>
 
-<style scoped>
-header {
-  line-height: 1.5;
-  max-height: 100vh;
+<style>
+/* Global reset */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-.logo {
-  display: block;
-  margin: 0 auto 2rem;
+body {
+  background: #071207;
+  color: #e8f0e8;
+  min-height: 100vh;
+  font-family: "Plus Jakarta Sans", sans-serif;
 }
 
-nav {
-  width: 100%;
-  font-size: 12px;
-  text-align: center;
-  margin-top: 2rem;
+.app-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
 }
 
-nav a.router-link-exact-active {
-  color: var(--color-text);
+.app-main {
+  flex: 1;
+  /* Kalau ada navbar (58px) beri padding atas supaya konten tidak tertutup */
 }
 
-nav a.router-link-exact-active:hover {
-  background-color: transparent;
-}
-
-nav a {
-  display: inline-block;
-  padding: 0 1rem;
-  border-left: 1px solid var(--color-border);
-}
-
-nav a:first-of-type {
-  border: 0;
-}
-
-@media (min-width: 1024px) {
-  header {
-    display: flex;
-    place-items: center;
-    padding-right: calc(var(--section-gap) / 2);
-  }
-
-  .logo {
-    margin: 0 2rem 0 0;
-  }
-
-  header .wrapper {
-    display: flex;
-    place-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  nav {
-    text-align: left;
-    margin-left: -1rem;
-    font-size: 1rem;
-
-    padding: 1rem 0;
-    margin-top: 1rem;
-  }
+/* Kalau halaman login — full screen tanpa padding */
+.app-main.no-layout {
+  padding-top: 0;
 }
 </style>
