@@ -1,11 +1,12 @@
 <script setup>
-import { computed } from "vue";
-import { useRouter, useRoute } from "vue-router";
+import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 
-const router = useRouter();
-const route = useRoute();
 const authStore = useAuthStore();
+const router = useRouter();
+const searchQuery = ref("");
+const dropdownOpen = ref(false);
 
 const initials = computed(() => {
   const name = authStore.user?.name || "";
@@ -17,287 +18,555 @@ const initials = computed(() => {
     .slice(0, 2);
 });
 
-const navItems = [
-  {
-    label: "Dashboard",
-    path: "/dashboard",
-    icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/>`,
-  },
-  {
-    label: "Absensi",
-    path: "/absensi",
-    icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"/><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z"/>`,
-  },
-  {
-    label: "Riwayat",
-    path: "/riwayat",
-    icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/>`,
-  },
-];
+const emit = defineEmits(["toggle-sidebar"]);
 
 const handleLogout = async () => {
+  dropdownOpen.value = false;
   await authStore.logout();
   router.push("/login");
+};
+
+const toggleDropdown = () => {
+  dropdownOpen.value = !dropdownOpen.value;
+};
+
+const closeDropdown = () => {
+  dropdownOpen.value = false;
 };
 </script>
 
 <template>
-  <nav class="navbar">
-    <!-- Brand -->
-    <div class="nav-brand">
-      <div class="nav-logo">
-        <svg viewBox="0 0 32 32" fill="none" class="logo-svg" aria-hidden="true">
-          <circle
-            cx="16"
-            cy="16"
-            r="14"
-            fill="none"
-            stroke="#d4a017"
-            stroke-width="1"
-            opacity="0.5"
-          />
-          <path
-            d="M8 20 Q16 10 24 20"
-            fill="none"
-            stroke="#f0c040"
-            stroke-width="1.5"
-            stroke-linecap="round"
-          />
-          <path d="M16 10 L16 21" fill="none" stroke="#f0c040" stroke-width="1.2" />
-          <polygon points="16,4 17,8 16,7 15,8" fill="#f0c040" />
-          <circle cx="16" cy="9" r="1.5" fill="#f0c040" />
-        </svg>
-      </div>
-      <div>
-        <div class="nav-title">MAN 2 Cilegon</div>
-        <div class="nav-sub">Sistem Absensi Digital</div>
-      </div>
-    </div>
-
-    <!-- Menu desktop (tengah) -->
-    <div class="nav-menu">
-      <RouterLink
-        v-for="item in navItems"
-        :key="item.path"
-        :to="item.path"
-        class="nav-item"
-        :class="{ active: route.path === item.path }"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          v-html="item.icon"
+  <header class="nb-root">
+    <!-- Hamburger (mobile) -->
+    <button class="nb-hamburger" @click="emit('toggle-sidebar')" aria-label="Buka menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5"
         />
-        {{ item.label }}
-      </RouterLink>
-    </div>
+      </svg>
+    </button>
 
-    <!-- Right -->
-    <div class="nav-right">
-      <div class="nav-user-info">
-        <div class="nav-avatar">{{ initials }}</div>
-        <div class="nav-user-text">
-          <span class="nav-user-name">{{ authStore.user?.name }}</span>
-          <span class="nav-user-role">Siswa</span>
-        </div>
-      </div>
-      <div class="nav-divider" />
-      <button @click="handleLogout" class="logout-btn" title="Keluar">
+    <!-- Search -->
+    <div class="nb-search-wrap">
+      <span class="nb-search-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
-            d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"
+            d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803 7.5 7.5 0 0015.803 15.803z"
           />
         </svg>
-        <span class="logout-text">Keluar</span>
-      </button>
+      </span>
+      <input
+        v-model="searchQuery"
+        type="text"
+        placeholder="Cari sesuatu..."
+        class="nb-search-input"
+      />
+      <kbd class="nb-search-kbd">⌘K</kbd>
     </div>
-  </nav>
+
+    <!-- Right -->
+    <div class="nb-right">
+      <!-- Notif -->
+      <button class="nb-icon-btn" aria-label="Notifikasi">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
+          />
+        </svg>
+        <span class="nb-notif-dot" />
+      </button>
+
+      <div class="nb-divider" />
+
+      <!-- Profile dropdown -->
+      <div class="nb-profile-wrap" v-click-outside="closeDropdown">
+        <button class="nb-user" @click="toggleDropdown" :class="{ active: dropdownOpen }">
+          <div class="nb-avatar">{{ initials }}</div>
+          <div class="nb-user-info">
+            <span class="nb-user-name">{{ authStore.user?.name || "Siswa" }}</span>
+            <span class="nb-user-nisn">NISN: {{ authStore.user?.nisn || "—" }}</span>
+          </div>
+          <svg
+            class="nb-chevron"
+            :class="{ rotated: dropdownOpen }"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        </button>
+
+        <!-- Dropdown menu -->
+        <transition name="dropdown">
+          <div v-if="dropdownOpen" class="nb-dropdown">
+            <!-- User info header -->
+            <div class="dd-header">
+              <div class="dd-avatar">{{ initials }}</div>
+              <div class="dd-info">
+                <span class="dd-name">{{ authStore.user?.name || "Siswa" }}</span>
+                <span class="dd-nisn">NISN: {{ authStore.user?.nisn || "—" }}</span>
+                <span class="dd-badge">Siswa</span>
+              </div>
+            </div>
+
+            <div class="dd-divider" />
+
+            <!-- Menu items -->
+            <RouterLink to="/profil" class="dd-item" @click="closeDropdown">
+              <span class="dd-item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"
+                  />
+                </svg>
+              </span>
+              Profil Saya
+            </RouterLink>
+
+            <RouterLink to="/pengaturan" class="dd-item" @click="closeDropdown">
+              <span class="dd-item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"
+                  />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+              </span>
+              Pengaturan
+            </RouterLink>
+
+            <div class="dd-divider" />
+
+            <button class="dd-item dd-logout" @click="handleLogout">
+              <span class="dd-item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"
+                  />
+                </svg>
+              </span>
+              Keluar
+            </button>
+          </div>
+        </transition>
+      </div>
+    </div>
+  </header>
 </template>
 
 <style scoped>
-.navbar {
+.nb-root {
   position: sticky;
   top: 0;
-  z-index: 50;
+  z-index: 40;
+  height: 60px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 16px;
   padding: 0 20px;
-  height: 58px;
-  background: rgba(5, 14, 5, 0.9);
-  border-bottom: 1px solid rgba(212, 160, 23, 0.12);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  box-shadow:
-    0 1px 0 rgba(212, 160, 23, 0.06),
-    0 4px 24px rgba(0, 0, 0, 0.4);
-  font-family: "Plus Jakarta Sans", sans-serif;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  font-family: "Poppins", sans-serif;
 }
 
-.nav-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.nav-logo {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  background: linear-gradient(135deg, rgba(45, 138, 45, 0.2), rgba(212, 160, 23, 0.2));
-  border: 1px solid rgba(212, 160, 23, 0.3);
-  display: flex;
+/* Hamburger */
+.nb-hamburger {
+  display: none;
   align-items: center;
   justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 8px;
+  color: #6b7280;
+  flex-shrink: 0;
+  transition:
+    background 0.2s,
+    color 0.2s;
 }
-.logo-svg {
+.nb-hamburger:hover {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+.nb-hamburger svg {
   width: 20px;
   height: 20px;
 }
 
-.nav-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: #f0c040;
-  line-height: 1.2;
-}
-.nav-sub {
-  font-size: 9.5px;
-  color: rgba(212, 160, 23, 0.45);
-}
-
-/* Menu tengah */
-.nav-menu {
+/* Search */
+.nb-search-wrap {
+  flex: 1;
+  max-width: 420px;
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 2px;
+}
+.nb-search-icon {
   position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.nav-item {
+  left: 10px;
+  color: #9ca3af;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 9px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: #4a6741;
-  text-decoration: none;
-  border: 1px solid transparent;
-  transition: all 0.2s;
+  pointer-events: none;
 }
-.nav-item svg {
+.nb-search-icon svg {
   width: 15px;
   height: 15px;
-  flex-shrink: 0;
 }
-.nav-item:hover {
-  background: rgba(212, 160, 23, 0.06);
-  color: #d4a017;
-  border-color: rgba(212, 160, 23, 0.12);
+.nb-search-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 72px 0 34px;
+  background: #f9fafb;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 13px;
+  font-family: "Poppins", sans-serif;
+  color: #374151;
+  outline: none;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
-.nav-item.active {
-  background: rgba(212, 160, 23, 0.1);
-  color: #f0c040;
-  border-color: rgba(212, 160, 23, 0.2);
-  font-weight: 600;
+.nb-search-input::placeholder {
+  color: #d1d5db;
+}
+.nb-search-input:focus {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.1);
+  background: #fff;
+}
+.nb-search-kbd {
+  position: absolute;
+  right: 10px;
+  padding: 2px 6px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  font-size: 10px;
+  color: #9ca3af;
+  pointer-events: none;
 }
 
 /* Right */
-.nav-right {
+.nb-right {
   display: flex;
   align-items: center;
   gap: 12px;
+  margin-left: auto;
   flex-shrink: 0;
 }
-.nav-user-info {
+.nb-icon-btn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+  cursor: pointer;
+  color: #6b7280;
+  transition: all 0.2s;
+}
+.nb-icon-btn:hover {
+  border-color: #16a34a;
+  color: #16a34a;
+  background: #f0fdf4;
+}
+.nb-icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.nb-notif-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  background: #16a34a;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+}
+.nb-divider {
+  width: 1px;
+  height: 24px;
+  background: #e5e7eb;
+}
+
+/* Profile wrap */
+.nb-profile-wrap {
+  position: relative;
+}
+
+/* User button */
+.nb-user {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #f9fafb;
 }
-
-.nav-avatar {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #2d8a2d, #d4a017);
+.nb-user:hover,
+.nb-user.active {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
+.nb-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #16a34a, #15803d);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 11px;
   font-weight: 800;
-  color: #071207;
-  border: 1.5px solid rgba(212, 160, 23, 0.3);
+  color: white;
+  flex-shrink: 0;
 }
-
-.nav-user-text {
+.nb-user-info {
   display: flex;
   flex-direction: column;
-}
-.nav-user-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: #c8d8c8;
   line-height: 1.2;
 }
-.nav-user-role {
-  font-size: 9.5px;
-  color: rgba(212, 160, 23, 0.5);
+.nb-user-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #166534;
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nb-user-nisn {
+  font-size: 10.5px;
+  color: #9ca3af;
+}
+.nb-chevron {
+  width: 13px;
+  height: 13px;
+  color: #9ca3af;
+  flex-shrink: 0;
+  transition: transform 0.25s ease;
+}
+.nb-chevron.rotated {
+  transform: rotate(180deg);
 }
 
-.nav-divider {
-  width: 1px;
-  height: 20px;
-  background: rgba(212, 160, 23, 0.15);
+/* Dropdown */
+.nb-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 220px;
+  background: white;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  z-index: 100;
 }
 
-.logout-btn {
+/* Dropdown header */
+.dd-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 9px;
-  background: none;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  color: #4a6741;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  font-family: inherit;
-  transition: all 0.2s;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  background: #f0fdf4;
 }
-.logout-btn svg {
+.dd-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: white;
+  flex-shrink: 0;
+}
+.dd-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.dd-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #166534;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dd-nisn {
+  font-size: 10.5px;
+  color: #9ca3af;
+}
+.dd-badge {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #16a34a;
+  background: #dcfce7;
+  padding: 1px 7px;
+  border-radius: 99px;
+  width: fit-content;
+}
+
+.dd-divider {
+  height: 1px;
+  background: #f3f4f6;
+  margin: 0;
+}
+
+/* Dropdown items */
+.dd-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: "Poppins", sans-serif;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.dd-item:hover {
+  background: #f9fafb;
+  color: #111827;
+}
+.dd-item-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.dd-item-icon svg {
   width: 14px;
   height: 14px;
 }
-.logout-btn:hover {
-  border-color: rgba(239, 68, 68, 0.35);
-  color: #f87171;
-  background: rgba(239, 68, 68, 0.06);
+.dd-item:hover .dd-item-icon {
+  background: #e5e7eb;
 }
 
+.dd-logout {
+  color: #dc2626;
+}
+.dd-logout:hover {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+.dd-logout .dd-item-icon {
+  background: #fef2f2;
+}
+.dd-logout:hover .dd-item-icon {
+  background: #fee2e2;
+}
+
+/* Dropdown transition */
+.dropdown-enter-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+.dropdown-leave-active {
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+.dropdown-enter-from {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.97);
+}
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+}
+
+/* Responsive */
 @media (max-width: 768px) {
-  .nav-menu {
+  .nb-hamburger {
+    display: flex;
+  }
+  .nb-search-kbd {
     display: none;
   }
-  .nav-user-text {
+  .nb-user-info {
     display: none;
   }
-  .logout-text {
+  .nb-chevron {
     display: none;
   }
-  .logout-btn {
-    padding: 6px 8px;
+  .nb-user {
+    padding: 4px;
+    border-radius: 50%;
+    border: none;
+    background: none;
   }
-  .nav-divider {
+  .nb-user:hover,
+  .nb-user.active {
+    background: #f0fdf4;
+  }
+  .nb-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+  }
+  .nb-divider {
+    display: none;
+  }
+  .nb-dropdown {
+    right: -8px;
+  }
+}
+@media (max-width: 480px) {
+  .nb-root {
+    padding: 0 14px;
+    gap: 10px;
+  }
+  .nb-icon-btn {
     display: none;
   }
 }

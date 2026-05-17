@@ -1,21 +1,28 @@
 // src/router/index.js
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "../stores/auth";
-import LoginView from "../views/pages/LoginView.vue";
-import AbsensiPage from "../views/pages/AbsensiPage.vue";
 
 const routes = [
-  { path: "/login", component: LoginView },
+  { path: "/", redirect: "/login" },
+
   {
-    path: "/absensi",
-    component: AbsensiPage,
-    meta: { requiresAuth: true },
+    path: "/login",
+    component: () => import("../views/pages/LoginView.vue"),
+    meta: { requiresGuest: true, hideLayout: true }, // ← tambah hideLayout
   },
+
   {
     path: "/dashboard",
     component: () => import("../views/pages/DashboardView.vue"),
-    meta: { requiresAuth: true, roles: ["admin", "guru"] },
+    meta: { requiresAuth: true, layout: "main" },
   },
+
+  {
+    path: "/absensi",
+    component: () => import("../views/pages/AbsensiPage.vue"),
+    meta: { requiresAuth: true, layout: "main" },
+  },
+
   { path: "/:pathMatch(.*)*", redirect: "/login" },
 ];
 
@@ -27,17 +34,26 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
 
-  if (!to.meta.requiresAuth) return true;
+  // ← TAMBAH pengecekan token dulu sebelum fetchMe
+  const token = localStorage.getItem("token");
 
-  // Kalau belum ada user di memory, cek ke server
-  if (!auth.user) {
-    const valid = await auth.fetchMe();
-    if (!valid) return "/login";
+  if (token && !auth.user) {
+    await auth.fetchMe();
   }
 
-  // Cek role kalau route punya requirement
-  if (to.meta.roles && !to.meta.roles.some((r) => auth.user?.roles?.includes(r))) {
-    return "/absensi"; // redirect ke halaman default
+  if (to.meta.requiresGuest) {
+    return auth.user ? "/dashboard" : true;
+  }
+
+  if (to.meta.requiresAuth) {
+    if (!auth.user) {
+      return { path: "/login", query: { redirect: to.fullPath } };
+    }
+
+    if (!auth.isSiswa) {
+      window.location.href = "/login";
+      return false;
+    }
   }
 
   return true;

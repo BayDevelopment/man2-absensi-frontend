@@ -1,37 +1,34 @@
-// FILE: src/stores/auth.js
+// src/stores/auth.js
 import { defineStore } from "pinia";
 import api from "../plugins/axios";
 
 export const useAuthStore = defineStore("auth", {
   state: () => ({
-    // Hanya simpan data user di sessionStorage (bukan token)
-    // sessionStorage auto clear saat browser ditutup
     user: JSON.parse(sessionStorage.getItem("user")) || null,
+    _fetchMePromise: null,
   }),
 
   getters: {
     isLoggedIn: (state) => !!state.user,
-    isAdmin: (state) => state.user?.roles?.includes("admin"),
-    isGuru: (state) => state.user?.roles?.includes("guru"),
-    isSiswa: (state) => state.user?.roles?.includes("siswa"),
+    isSiswa: (state) => state.user?.roles?.includes("siswa"), // ✅ hanya ini yang perlu
     userName: (state) => state.user?.name ?? "",
     userNisn: (state) => state.user?.nisn ?? "",
     userKelas: (state) => state.user?.kelas ?? "",
   },
 
   actions: {
-    async login(nisn, password, remember = false) {
-      // 1. Ambil CSRF cookie dulu (WAJIB untuk Sanctum cookie auth)
-      await api.get("/sanctum/csrf-cookie");
+    async login(nisn, password) {
+      // ← hapus baris csrf-cookie, tidak perlu lagi
+      const { data } = await api.post("/api/login", { email: nisn, password });
 
-      // 2. Kirim login — field 'email' diisi NISN (backend handle di AuthController)
-      const { data } = await api.post("/api/login", {
-        email: nisn, // ← kirim NISN di field email
-        password,
-        remember,
-      });
+      if (!data.user?.roles?.includes("siswa")) {
+        throw new Error("Akses ditolak. Gunakan halaman admin.");
+      }
 
-      // 3. Simpan hanya data user (BUKAN token — token ada di httpOnly cookie)
+      // simpan token
+      localStorage.setItem("token", data.token);
+      api.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
+
       this.user = data.user;
       sessionStorage.setItem("user", JSON.stringify(data.user));
 
@@ -42,23 +39,39 @@ export const useAuthStore = defineStore("auth", {
       try {
         await api.post("/api/logout");
       } catch (e) {
-        // tetap logout meski request gagal
-        console.warn("Logout request failed:", e);
+        console.warn("Logout gagal:", e);
       } finally {
+        localStorage.removeItem("token");
+        delete api.defaults.headers.common["Authorization"];
         this.user = null;
         sessionStorage.removeItem("user");
       }
     },
 
-    // Panggil saat app load — verifikasi session ke server
-    async fetchMe() {
+    fetchMe() {
+      if (!this._fetchMePromise) {
+        this._fetchMePromise = this._doFetchMe().finally(() => {
+          this._fetchMePromise = null;
+        });
+      }
+      return this._fetchMePromise;
+    },
+
+    async _doFetchMe() {
       try {
         const { data } = await api.get("/api/me");
+
+        // ✅ Kalau session valid tapi bukan siswa, anggap tidak login di Vue
+        if (!data.user?.roles?.includes("siswa")) {
+          this.user = null;
+          sessionStorage.removeItem("user");
+          return false;
+        }
+
         this.user = data.user;
         sessionStorage.setItem("user", JSON.stringify(data.user));
         return true;
       } catch {
-        // Session expired atau cookie tidak valid
         this.user = null;
         sessionStorage.removeItem("user");
         return false;
