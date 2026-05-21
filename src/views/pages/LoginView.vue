@@ -1,21 +1,59 @@
 <script setup>
-import { ref, onMounted, nextTick } from "vue";
+import { ref, computed, onMounted, nextTick } from "vue";
 import { useAuthStore } from "../../stores/auth";
 import { useRouter } from "vue-router";
+import Swal from "sweetalert2";
 
+// ---------------------------
+// Refs & Reactive State
+// ---------------------------
 const nisn = ref("");
 const password = ref("");
 const showPassword = ref(false);
 const isLoading = ref(false);
 const mounted = ref(false);
 const rememberMe = ref(false);
+const isLoadingPengaturan = ref(true); // ← true dulu, baru false setelah fetch
 
-const authStore = useAuthStore();
-const router = useRouter();
 const errorMsg = ref("");
 const nisnError = ref("");
 const passwordError = ref("");
 
+const authStore = useAuthStore();
+const router = useRouter();
+
+// ---------------------------
+// Data Sekolah (Pengaturan)
+// ---------------------------
+const pengaturan = ref(null);
+
+// ✅ FIX: fallback null bukan string — supaya v-else-if bisa bedakan "belum ada data" vs "data kosong"
+const namaSekolah = computed(() => pengaturan.value?.nama_sekolah ?? null);
+const subSekolah = computed(() => pengaturan.value?.alamat ?? null);
+const logoSekolah = computed(() => pengaturan.value?.logo ?? null);
+
+// ---------------------------
+// SweetAlert2 Toast Config
+// ---------------------------
+const toast = Swal.mixin({
+  toast: true,
+  position: "top-end",
+  showConfirmButton: false,
+  timer: 2500,
+  timerProgressBar: true,
+  iconColor: "white",
+  customClass: { popup: "colored-toast" },
+  didOpen: (toastEl) => {
+    toastEl.addEventListener("mouseenter", Swal.stopTimer);
+    toastEl.addEventListener("mouseleave", Swal.resumeTimer);
+  },
+});
+
+const showToast = (icon, title) => toast.fire({ icon, title });
+
+// ---------------------------
+// Validasi Input
+// ---------------------------
 const validateNisn = () => {
   if (!nisn.value) {
     nisnError.value = "";
@@ -38,6 +76,9 @@ const validatePassword = () => {
   passwordError.value = password.value.length < 6 ? "Password minimal 6 karakter" : "";
 };
 
+// ---------------------------
+// Login Function
+// ---------------------------
 const handleLogin = async () => {
   errorMsg.value = "";
   nisnError.value = "";
@@ -52,50 +93,80 @@ const handleLogin = async () => {
     return;
   }
   if (isLoading.value) return;
+
   isLoading.value = true;
 
   try {
     const data = await authStore.login(nisn.value, password.value, rememberMe.value);
-    const role = data.user.role;
-    const roles = data.user.roles || [];
-    const isSiswa =
-      role === "siswa" || roles === "siswa" || (Array.isArray(roles) && roles.includes("siswa"));
+    const user = data.data.user;
+    const roles = user?.roles ?? [];
 
-    if (!isSiswa) {
-      if (typeof authStore.logout === "function") await authStore.logout();
+    if (!roles.includes("siswa")) {
+      await authStore.logout();
       errorMsg.value = "Akses ditolak. Hanya siswa yang dapat login di sini.";
       return;
     }
+
+    showToast("success", "Login berhasil!");
     router.push("/dashboard");
   } catch (err) {
     const status = err.response?.status;
     const message = err.response?.data?.message;
+
     if (status === 401) {
       if (
         message?.toLowerCase().includes("nisn") ||
         message?.toLowerCase().includes("tidak ditemukan")
       ) {
         nisnError.value = "NISN tidak terdaftar dalam sistem";
+        showToast("error", "NISN tidak ditemukan!");
       } else {
         passwordError.value = "Password salah. Silakan coba lagi";
+        showToast("error", "Password salah!");
       }
     } else if (status === 403) {
-      errorMsg.value = message || "Email belum diverifikasi, silakan cek inbox atau spam";
+      errorMsg.value = message || "Email belum diverifikasi";
+      showToast("warning", "Email belum diverifikasi!");
     } else if (status === 422) {
       nisnError.value = message ?? "Data tidak valid";
+      showToast("warning", "Data tidak valid!");
     } else {
       errorMsg.value = message ?? "Terjadi kesalahan, coba lagi";
+      showToast("error", "Terjadi kesalahan!");
     }
   } finally {
     isLoading.value = false;
   }
 };
 
+// ---------------------------
+// Logout Toast
+// ---------------------------
+const showLogoutToast = () => showToast("success", "Berhasil logout!");
+
+// ---------------------------
+// Lifecycle Hook (SATU onMounted)
+// ---------------------------
 onMounted(async () => {
   await nextTick();
   mounted.value = true;
+
+  try {
+    isLoadingPengaturan.value = true;
+    pengaturan.value = await authStore.fetchPengaturan();
+  } finally {
+    isLoadingPengaturan.value = false;
+  }
+
+  if (authStore.justLoggedOut) {
+    showLogoutToast();
+    authStore.justLoggedOut = false;
+  }
 });
 
+// ---------------------------
+// Keyboard Submit
+// ---------------------------
 const handleKeydown = (e) => {
   if (e.key === "Enter" && !isLoading.value) handleLogin();
 };
@@ -106,143 +177,157 @@ const handleKeydown = (e) => {
     <!-- ── Left branding panel (desktop only) ── -->
     <aside class="login-side-panel" aria-hidden="true">
       <div class="login-side-content">
-        <!-- Side panel (desktop) -->
+        <!-- Logo -->
         <div class="login-side-logo">
-          <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <!-- Outer ring -->
-            <circle cx="40" cy="40" r="38" stroke="rgba(255,255,255,0.25)" stroke-width="1.5" />
-            <circle cx="40" cy="40" r="32" stroke="rgba(255,255,255,0.15)" stroke-width="1" />
-
-            <!-- Clipboard body -->
-            <rect
-              x="22"
-              y="24"
-              width="36"
-              height="42"
-              rx="4"
-              fill="rgba(255,255,255,0.12)"
-              stroke="rgba(255,255,255,0.7)"
-              stroke-width="1.5"
-            />
-
-            <!-- Clipboard top clip -->
-            <rect
-              x="32"
-              y="20"
-              width="16"
-              height="8"
-              rx="3"
-              fill="rgba(255,255,255,0.15)"
-              stroke="rgba(255,255,255,0.7)"
-              stroke-width="1.5"
-            />
-
-            <!-- Lines (daftar absen) -->
-            <line
-              x1="30"
-              y1="38"
-              x2="50"
-              y2="38"
-              stroke="rgba(255,255,255,0.5)"
-              stroke-width="1.5"
-              stroke-linecap="round"
-            />
-            <line
-              x1="30"
-              y1="45"
-              x2="50"
-              y2="45"
-              stroke="rgba(255,255,255,0.5)"
-              stroke-width="1.5"
-              stroke-linecap="round"
-            />
-            <line
-              x1="30"
-              y1="52"
-              x2="44"
-              y2="52"
-              stroke="rgba(255,255,255,0.5)"
-              stroke-width="1.5"
-              stroke-linecap="round"
-            />
-
-            <!-- Checkmark (hadir) -->
-            <circle
-              cx="27"
-              cy="38"
-              r="3"
-              fill="rgba(255,255,255,0.15)"
-              stroke="rgba(255,255,255,0.7)"
-              stroke-width="1.2"
-            />
-            <path
-              d="M25.5 38l1.2 1.2 2-2"
-              stroke="white"
-              stroke-width="1.2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-
-            <circle
-              cx="27"
-              cy="45"
-              r="3"
-              fill="rgba(255,255,255,0.15)"
-              stroke="rgba(255,255,255,0.7)"
-              stroke-width="1.2"
-            />
-            <path
-              d="M25.5 45l1.2 1.2 2-2"
-              stroke="white"
-              stroke-width="1.2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-
-            <circle
-              cx="27"
-              cy="52"
-              r="3"
-              fill="rgba(255,255,255,0.15)"
-              stroke="rgba(255,255,255,0.7)"
-              stroke-width="1.2"
-            />
-            <!-- X (tidak hadir) -->
-            <path
-              d="M25.8 50.8l2.4 2.4M28.2 50.8l-2.4 2.4"
-              stroke="rgba(255,255,255,0.6)"
-              stroke-width="1.2"
-              stroke-linecap="round"
-            />
-
-            <!-- Pensil kanan bawah -->
-            <g transform="translate(46, 52) rotate(-45)">
+          <!-- ✅ Loading: tampilkan skeleton logo -->
+          <template v-if="isLoadingPengaturan">
+            <div class="skeleton skeleton-logo" />
+          </template>
+          <!-- ✅ Ada logo dari API -->
+          <template v-else-if="logoSekolah">
+            <img :src="logoSekolah" :alt="namaSekolah" class="login-side-logo-img" />
+          </template>
+          <!-- ✅ Tidak ada logo: tampilkan SVG default -->
+          <template v-else>
+            <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="40" cy="40" r="38" stroke="rgba(255,255,255,0.25)" stroke-width="1.5" />
+              <circle cx="40" cy="40" r="32" stroke="rgba(255,255,255,0.15)" stroke-width="1" />
               <rect
-                x="-3"
-                y="-10"
-                width="6"
-                height="12"
-                rx="1"
-                fill="rgba(255,255,255,0.2)"
-                stroke="white"
+                x="22"
+                y="24"
+                width="36"
+                height="42"
+                rx="4"
+                fill="rgba(255,255,255,0.12)"
+                stroke="rgba(255,255,255,0.7)"
+                stroke-width="1.5"
+              />
+              <rect
+                x="32"
+                y="20"
+                width="16"
+                height="8"
+                rx="3"
+                fill="rgba(255,255,255,0.15)"
+                stroke="rgba(255,255,255,0.7)"
+                stroke-width="1.5"
+              />
+              <line
+                x1="30"
+                y1="38"
+                x2="50"
+                y2="38"
+                stroke="rgba(255,255,255,0.5)"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+              <line
+                x1="30"
+                y1="45"
+                x2="50"
+                y2="45"
+                stroke="rgba(255,255,255,0.5)"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+              <line
+                x1="30"
+                y1="52"
+                x2="44"
+                y2="52"
+                stroke="rgba(255,255,255,0.5)"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+              <circle
+                cx="27"
+                cy="38"
+                r="3"
+                fill="rgba(255,255,255,0.15)"
+                stroke="rgba(255,255,255,0.7)"
                 stroke-width="1.2"
               />
-              <path d="M-3 2 L0 7 L3 2" fill="white" opacity="0.8" />
-              <line
-                x1="-3"
-                y1="-2"
-                x2="3"
-                y2="-2"
-                stroke="rgba(255,255,255,0.5)"
-                stroke-width="1"
+              <path
+                d="M25.5 38l1.2 1.2 2-2"
+                stroke="white"
+                stroke-width="1.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
               />
-            </g>
-          </svg>
+              <circle
+                cx="27"
+                cy="45"
+                r="3"
+                fill="rgba(255,255,255,0.15)"
+                stroke="rgba(255,255,255,0.7)"
+                stroke-width="1.2"
+              />
+              <path
+                d="M25.5 45l1.2 1.2 2-2"
+                stroke="white"
+                stroke-width="1.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <circle
+                cx="27"
+                cy="52"
+                r="3"
+                fill="rgba(255,255,255,0.15)"
+                stroke="rgba(255,255,255,0.7)"
+                stroke-width="1.2"
+              />
+              <path
+                d="M25.8 50.8l2.4 2.4M28.2 50.8l-2.4 2.4"
+                stroke="rgba(255,255,255,0.6)"
+                stroke-width="1.2"
+                stroke-linecap="round"
+              />
+              <g transform="translate(46, 52) rotate(-45)">
+                <rect
+                  x="-3"
+                  y="-10"
+                  width="6"
+                  height="12"
+                  rx="1"
+                  fill="rgba(255,255,255,0.2)"
+                  stroke="white"
+                  stroke-width="1.2"
+                />
+                <path d="M-3 2 L0 7 L3 2" fill="white" opacity="0.8" />
+                <line
+                  x1="-3"
+                  y1="-2"
+                  x2="3"
+                  y2="-2"
+                  stroke="rgba(255,255,255,0.5)"
+                  stroke-width="1"
+                />
+              </g>
+            </svg>
+          </template>
         </div>
-        <h2 class="login-side-title">Madrasah Aliyah Negeri 2</h2>
-        <p class="login-side-sub">Kota Cilegon</p>
+
+        <!-- ✅ FIX: Nama & Sub Sekolah — 3 state: loading | ada data | tidak ada data -->
+        <template v-if="isLoadingPengaturan">
+          <!-- Skeleton sesuai ukuran h2 dan p -->
+          <div class="skeleton skeleton-title" />
+          <div class="skeleton skeleton-sub" />
+        </template>
+        <template v-else-if="namaSekolah">
+          <!-- Ada data dari API -->
+          <h2 class="login-side-title mt-4">{{ namaSekolah }}</h2>
+          <p class="login-side-sub">{{ subSekolah }}</p>
+        </template>
+        <template v-else>
+          <!-- Tidak ada data sama sekali (API gagal / kosong) -->
+          <h2 class="login-side-title mt-4">Nama Sekolah</h2>
+          <p class="login-side-sub">Alamat Sekolah</p>
+        </template>
+
         <div class="login-side-divider"></div>
         <p class="login-side-desc">Sistem Absensi Digital<br />untuk siswa &amp; tenaga pengajar</p>
+
         <div class="login-dot-grid" aria-hidden="true">
           <span v-for="i in 24" :key="i" class="login-dot" />
         </div>
@@ -255,32 +340,60 @@ const handleKeydown = (e) => {
     <div class="login-form-panel">
       <div class="login-card-wrapper" :class="mounted ? 'login-card-visible' : 'login-card-hidden'">
         <div class="login-card">
-          <!-- Mobile logo -->
+          <!-- ✅ Mobile logo — satu tempat, bersih -->
           <div class="login-mobile-logo">
             <div class="login-mobile-logo-ring">
-              <svg viewBox="0 0 56 56">
-                <circle
-                  cx="28"
-                  cy="28"
-                  r="26"
-                  fill="none"
-                  stroke="rgba(22,163,74,0.4)"
-                  stroke-width="1.5"
+              <!-- ✅ Loading: skeleton ring -->
+              <template v-if="isLoadingPengaturan">
+                <div class="skeleton skeleton-mobile-logo-ring" />
+              </template>
+              <!-- ✅ Ada logo dari API -->
+              <template v-else-if="logoSekolah">
+                <img
+                  :src="logoSekolah"
+                  :alt="namaSekolah"
+                  style="width: 40px; height: 40px; object-fit: contain; border-radius: 8px"
                 />
-                <path
-                  d="M14 36 Q28 20 42 36"
-                  fill="none"
-                  stroke="#16a34a"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                />
-                <path d="M28 20 L28 38" fill="none" stroke="#16a34a" stroke-width="1.5" />
-                <polygon points="28,8 30,15 28,13 26,15" fill="#16a34a" />
-                <circle cx="28" cy="17" r="2.5" fill="#16a34a" />
-              </svg>
+              </template>
+              <!-- ✅ Tidak ada logo: SVG default -->
+              <template v-else>
+                <svg viewBox="0 0 56 56">
+                  <circle
+                    cx="28"
+                    cy="28"
+                    r="26"
+                    fill="none"
+                    stroke="rgba(22,163,74,0.4)"
+                    stroke-width="1.5"
+                  />
+                  <path
+                    d="M14 36 Q28 20 42 36"
+                    fill="none"
+                    stroke="#16a34a"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                  />
+                  <path d="M28 20 L28 38" fill="none" stroke="#16a34a" stroke-width="1.5" />
+                  <polygon points="28,8 30,15 28,13 26,15" fill="#16a34a" />
+                  <circle cx="28" cy="17" r="2.5" fill="#16a34a" />
+                </svg>
+              </template>
             </div>
+
+            <!-- ✅ FIX: Nama sekolah mobile — 3 state -->
             <div>
-              <p class="login-mobile-school-name">MAN 2 Kota Cilegon</p>
+              <template v-if="isLoadingPengaturan">
+                <!-- Skeleton sesuai ukuran p.login-mobile-school-name -->
+                <div class="skeleton skeleton-mobile-name" />
+              </template>
+              <template v-else-if="namaSekolah">
+                <!-- Ada data dari API -->
+                <p class="login-mobile-school-name">{{ namaSekolah }}</p>
+              </template>
+              <template v-else>
+                <!-- Tidak ada data -->
+                <p class="login-mobile-school-name">Nama Sekolah</p>
+              </template>
               <p class="login-mobile-school-sub">Sistem Absensi Digital</p>
             </div>
           </div>
@@ -487,3 +600,74 @@ const handleKeydown = (e) => {
     </div>
   </main>
 </template>
+
+<style scoped>
+.login-side-logo-img {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 8px;
+}
+
+/* ─── Skeleton Base ─── */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.08) 25%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0.08) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+  display: block;
+}
+
+/* ─── Skeleton Desktop Aside ─── */
+/* Sesuaikan dengan ukuran login-side-logo (80x80) */
+.skeleton-logo {
+  width: 80px;
+  height: 80px;
+  border-radius: 12px;
+}
+
+/* Sesuaikan dengan ukuran h2.login-side-title */
+.skeleton-title {
+  width: 180px;
+  height: 24px;
+  margin-top: 16px; /* setara mt-4 */
+  margin-bottom: 8px;
+}
+
+/* Sesuaikan dengan ukuran p.login-side-sub */
+.skeleton-sub {
+  width: 120px;
+  height: 16px;
+}
+
+/* ─── Skeleton Mobile ─── */
+/* Sesuaikan dengan ukuran login-mobile-logo-ring */
+.skeleton-mobile-logo-ring {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+/* Sesuaikan dengan ukuran p.login-mobile-school-name */
+.skeleton-mobile-name {
+  width: 130px;
+  height: 14px;
+  margin-bottom: 4px;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+</style>

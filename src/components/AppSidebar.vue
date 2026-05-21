@@ -37,11 +37,6 @@ const navGroups = [
     label: "Informasi",
     items: [
       {
-        label: "Rekap Nilai",
-        path: "/rekap",
-        icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/>`,
-      },
-      {
         label: "Jadwal",
         path: "/jadwal",
         icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5"/>`,
@@ -245,7 +240,8 @@ const isActive = (path) => route.path === path;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 16px 16px 14px;
+  /* ✅ Spacing atas bawah diperbesar: 20px atas-bawah, 16px kiri-kanan */
+  padding: 20px 16px;
   border-bottom: 1px solid var(--sb-border);
   flex-shrink: 0;
 }
@@ -276,6 +272,8 @@ const isActive = (path) => route.path === path;
 .sb-brand-sub {
   font-size: 10px;
   color: var(--sb-muted);
+  /* ✅ Sedikit jarak antara nama & sub-label */
+  margin-top: 2px;
 }
 .sb-close {
   display: none;
@@ -306,17 +304,19 @@ const isActive = (path) => route.path === path;
 .sb-nav {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 12px 4px;
+  /* ✅ Padding atas bawah diperbesar: 20px atas, 8px bawah */
+  padding: 20px 12px 8px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  /* ✅ Gap antar group diperbesar */
+  gap: 28px;
   scrollbar-width: thin;
   scrollbar-color: #e5e7eb transparent;
 }
 .sb-group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 .sb-group-label {
   font-size: 9.5px;
@@ -325,14 +325,16 @@ const isActive = (path) => route.path === path;
   text-transform: uppercase;
   color: #d1d5db;
   padding: 0 8px;
-  margin-bottom: 4px;
+  /* ✅ Jarak antara label group dan item navigasi diperbesar */
+  margin-bottom: 8px;
 }
 
 .sb-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 10px;
+  /* ✅ Padding atas bawah item diperbesar: 11px */
+  padding: 11px 10px;
   border-radius: 10px;
   text-decoration: none;
   font-size: 13px;
@@ -399,7 +401,8 @@ const isActive = (path) => route.path === path;
 
 /* Footer */
 .sb-footer {
-  padding: 12px 16px;
+  /* ✅ Padding atas bawah footer diperbesar: 20px atas-bawah */
+  padding: 20px 16px;
   border-top: 1px solid var(--sb-border);
   flex-shrink: 0;
 }
@@ -408,7 +411,8 @@ const isActive = (path) => route.path === path;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 9px 12px;
+  /* ✅ Padding atas bawah tombol logout diperbesar: 11px */
+  padding: 11px 12px;
   border-radius: 10px;
   border: 1px solid #fecaca;
   background: #fef2f2;
@@ -418,7 +422,8 @@ const isActive = (path) => route.path === path;
   font-family: "Poppins", sans-serif;
   cursor: pointer;
   transition: all 0.2s;
-  margin-bottom: 8px;
+  /* ✅ Jarak antara tombol logout dan versi diperbesar */
+  margin-bottom: 12px;
 }
 .sb-logout:hover {
   background: #fee2e2;
@@ -432,6 +437,8 @@ const isActive = (path) => route.path === path;
   text-align: center;
   font-size: 10px;
   color: #d1d5db;
+  /* ✅ Sedikit padding atas agar tidak terlalu mepet tombol */
+  padding-top: 4px;
 }
 
 /* Responsive */

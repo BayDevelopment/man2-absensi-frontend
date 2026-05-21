@@ -698,3 +698,43 @@ body,
     transition: none !important;
   }
 }
+
+/* ── SweetAlert2 Colored Toast ── */
+.colored-toast.swal2-icon-success {
+  background: #16a34a !important;
+}
+.colored-toast.swal2-icon-error {
+  background: #dc2626 !important;
+}
+.colored-toast.swal2-icon-warning {
+  background: #d97706 !important;
+}
+.colored-toast.swal2-icon-info {
+  background: #2563eb !important;
+}
+.colored-toast .swal2-title {
+  color: white !important;
+  font-family: "Poppins", sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+.colored-toast .swal2-icon {
+  border-color: rgba(255, 255, 255, 0.5) !important;
+  color: white !important;
+}
+.colored-toast .swal2-icon.swal2-success .swal2-success-ring {
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+.colored-toast .swal2-icon.swal2-success [class^="swal2-success-line"] {
+  background-color: white !important;
+}
+.colored-toast .swal2-icon.swal2-error [class^="swal2-x-mark-line"] {
+  background-color: white !important;
+}
+.colored-toast .swal2-icon.swal2-warning {
+  color: white !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+}
+.colored-toast .swal2-timer-progress-bar {
+  background: rgba(255, 255, 255, 0.4) !important;
+}
