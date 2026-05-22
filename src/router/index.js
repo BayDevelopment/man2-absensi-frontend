@@ -1,7 +1,7 @@
 // src/router/index.js
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "../stores/auth";
-import api from "../plugins/axios";
+import { setAuthToken, getToken } from "../plugins/axios";
 
 const routes = [
   { path: "/", redirect: "/login" },
@@ -40,6 +40,7 @@ const routes = [
     component: () => import("../views/pages/AbsensiPage.vue"),
     meta: { requiresAuth: true, layout: "main" },
   },
+  // Tangkap semua route yang tidak dikenal
   { path: "/:pathMatch(.*)*", redirect: "/login" },
 ];
 
@@ -48,36 +49,37 @@ const router = createRouter({
   routes,
 });
 
+// ─── Navigation Guard ─────────────────────────────────────────────────────────
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
 
-  // ✅ Hanya jalankan init sekali — saat isReady masih false
+  // Inisialisasi auth hanya sekali per sesi (saat isReady masih false)
   if (!auth.isReady) {
-    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+    const token = getToken(); // pakai helper, bukan akses storage langsung
 
     if (token) {
-      // Inject dulu ke axios sebelum fetchMe
-      if (!api.defaults.headers.common["Authorization"]) {
-        api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-      }
-      await auth.fetchMe(); // isReady di-set true di dalam fetchMe (finally)
+      setAuthToken(token); // pakai helper dari axios.js, tidak duplikasi logika
+      await auth.fetchMe(); // isReady di-set true di dalam finally fetchMe
     } else {
-      auth.isReady = true; // ✅ Tidak ada token → langsung ready
+      auth.isReady = true; // tidak ada token → langsung tandai ready
     }
   }
 
-  // Guard: halaman guest (login)
+  // ── Guard: halaman guest (login) ──────────────────────────────────────────
   if (to.meta.requiresGuest) {
     return auth.isLoggedIn ? "/dashboard" : true;
   }
 
-  // Guard: halaman protected
+  // ── Guard: halaman protected ──────────────────────────────────────────────
   if (to.meta.requiresAuth) {
     if (!auth.isLoggedIn) {
+      // Simpan tujuan asal agar bisa redirect balik setelah login
       return { path: "/login", query: { redirect: to.fullPath } };
     }
+
     if (!auth.isSiswa) {
-      return "/login";
+      // User login tapi bukan siswa → tolak dengan pesan jelas
+      return { path: "/login", query: { error: "unauthorized" } };
     }
   }
 

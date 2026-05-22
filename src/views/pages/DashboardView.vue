@@ -19,6 +19,7 @@ const sidebarOpen = ref(false);
 // ============================================================================
 const waktuSekarang = ref(new Date());
 let timerJam = null;
+let timerFetch = null;
 
 const todayStr = computed(() =>
   waktuSekarang.value.toLocaleDateString("id-ID", {
@@ -44,22 +45,25 @@ const jamSekarang = computed(() => {
 });
 
 // ============================================================================
-// 2. LOADING STATE & DATA MENTAH
+// 2. LOADING STATE, ERROR STATE & DATA MENTAH
 // ============================================================================
 const isLoading = ref({ summary: true, jadwal: true, pengumuman: true });
+const errorMsg = ref(null);
+const isError = ref(false);
 
 const summary = ref(null);
 const jadwalHariIni = ref([]);
 const pengumuman = ref([]);
 const namaSiswa = ref("");
 
+// FIX #3: pakai ref agar reaktif dan aman saat dipanggil bersamaan
+const abortController = ref(null);
+
 // ============================================================================
 // 3. HELPER WAKTU
 // ============================================================================
-/** Ambil HH:mm dari string waktu (HH:mm:ss / HH:mm) */
 const ambilJam = (value, fallback = "00:00") => (value ? value.toString().slice(0, 5) : fallback);
 
-/** Konversi HH:mm → menit integer */
 const toMenit = (str) => {
   if (!str) return 0;
   const [h, m] = str.split(":").map(Number);
@@ -111,7 +115,6 @@ const jadwalDenganStatus = computed(() => {
       j.is_break === "1" ||
       j.is_istirahat === true;
 
-    // Khusus istirahat: tampil sebagai jadwal, tapi tidak ada tombol absen
     if (isIstirahat) {
       return {
         ...j,
@@ -144,7 +147,6 @@ const jadwalDenganStatus = computed(() => {
           class: "sudah",
         };
       }
-
       if (isGuru) {
         if (absenBelumDibuka) {
           return {
@@ -153,7 +155,6 @@ const jadwalDenganStatus = computed(() => {
             class: "via-guru",
           };
         }
-
         if (sudahAlfa) {
           return {
             text: "❌ Waktu Absen Habis",
@@ -161,14 +162,12 @@ const jadwalDenganStatus = computed(() => {
             class: "via-guru",
           };
         }
-
         return {
           text: "👨‍🏫 Absen oleh Guru",
           info: "Guru akan mengisi presensi mata pelajaran ini",
           class: "via-guru",
         };
       }
-
       if (sudahAlfa) {
         return {
           text: "❌ Waktu Absen Habis",
@@ -176,7 +175,6 @@ const jadwalDenganStatus = computed(() => {
           class: "belum-tutup",
         };
       }
-
       if (absenBelumDibuka) {
         return {
           text: "🔒 Absen Belum Dibuka",
@@ -184,7 +182,6 @@ const jadwalDenganStatus = computed(() => {
           class: "belum",
         };
       }
-
       return {
         text: "⚠️ Silahkan Absen",
         info: `Batas masuk sekolah hingga pukul ${tutupAbsen}`,
@@ -220,14 +217,12 @@ const jadwalDenganStatus = computed(() => {
   });
 });
 
-/** Apakah jadwal pertama sudah diabsen hari ini */
 const sudahAbsenHariIni = computed(() => {
   const first =
     jadwalDenganStatus.value.find((j) => j.is_jadwal_pertama) ?? jadwalDenganStatus.value[0];
   return !!first?.sudahAbsen;
 });
 
-/** Status absen jadwal pertama (hadir / terlambat / dll) */
 const statusAbsenHariIni = computed(() => {
   const first =
     jadwalDenganStatus.value.find((j) => j.is_jadwal_pertama) ?? jadwalDenganStatus.value[0];
@@ -236,7 +231,6 @@ const statusAbsenHariIni = computed(() => {
 
 // ============================================================================
 // 6. COMPUTED — PENGUMUMAN
-//    Disesuaikan dengan model: judul, isi, dibuat_oleh, published_at, expired_at
 // ============================================================================
 const warnaList = [
   { warna: "#2563eb", bg: "#eff6ff", icon: "📋" },
@@ -251,8 +245,7 @@ const pengumumanDenganWarna = computed(() =>
     ...p,
     ...warnaList[i % warnaList.length],
     tanggalFormatted: p.tanggal || "Baru saja",
-    expiredFormatted: p.expired_at || null, // dari backend (sudah diformat Carbon)
-    // dibuat_oleh sudah ada dari spread ...p
+    expiredFormatted: p.expired_at || null,
   })),
 );
 
@@ -277,6 +270,12 @@ const goToAbsen = (jadwal) => {
   if (jadwal.absenDisabled) return;
   if (jadwal.isGuru) return;
 
+  // FIX #1: pakai || bukan && — cukup salah satu false sudah harus redirect
+  if (!authStore.isLoggedIn) {
+    router.push({ path: "/login", query: { redirect: "/absensi" } });
+    return;
+  }
+
   router.push({
     path: "/absensi",
     query: {
@@ -290,17 +289,42 @@ const goToAbsen = (jadwal) => {
 // 9. FETCH DATA DASHBOARD
 // ============================================================================
 const fetchDashboard = async () => {
+  // FIX #3: abort via ref, lebih aman saat dipanggil bersamaan
+  if (abortController.value) abortController.value.abort();
+  abortController.value = new AbortController();
+
+  errorMsg.value = null;
+  isError.value = false;
   isLoading.value = { summary: true, jadwal: true, pengumuman: true };
 
   try {
-    const { data } = await api.get("/api/dashboard");
+    const { data } = await api.get("/api/dashboard", {
+      signal: abortController.value.signal,
+    });
 
     summary.value = data.summary ?? null;
-    jadwalHariIni.value = data.jadwal_hari_ini ?? [];
-    pengumuman.value = data.pengumuman ?? [];
+    jadwalHariIni.value = Array.isArray(data.jadwal_hari_ini) ? data.jadwal_hari_ini : [];
+    pengumuman.value = Array.isArray(data.pengumuman) ? data.pengumuman : [];
     namaSiswa.value = data.nama_siswa || authStore.user?.name || "Siswa";
-  } catch {
-    // Error ditangani senyap; data tetap kosong/default
+  } catch (err) {
+    if (err.name === "CanceledError") return;
+
+    console.error("[Dashboard] Gagal fetch data:", err);
+    isError.value = true;
+
+    // FIX #4: fallback namaSiswa dari store saat error
+    namaSiswa.value = authStore.user?.name || "Siswa";
+
+    if (err.response?.status === 401) {
+      errorMsg.value = "Sesi Anda telah berakhir. Silakan login kembali.";
+      router.push({ path: "/login", query: { redirect: "/dashboard" } });
+    } else if (err.response?.status >= 500) {
+      errorMsg.value = "Server sedang bermasalah. Silakan coba beberapa saat lagi.";
+    } else if (!navigator.onLine) {
+      errorMsg.value = "Tidak ada koneksi internet. Periksa jaringan Anda.";
+    } else {
+      errorMsg.value = "Gagal memuat data. Silakan coba lagi.";
+    }
   } finally {
     isLoading.value = { summary: false, jadwal: false, pengumuman: false };
   }
@@ -311,13 +335,22 @@ const fetchDashboard = async () => {
 // ============================================================================
 onMounted(() => {
   fetchDashboard();
+
+  // FIX #2: 60 detik cukup karena satuan terkecil status absen adalah menit
   timerJam = setInterval(() => {
     waktuSekarang.value = new Date();
   }, 60_000);
+
+  // Re-fetch data dari server tiap 5 menit
+  timerFetch = setInterval(() => {
+    fetchDashboard();
+  }, 5 * 60_000);
 });
 
 onUnmounted(() => {
   if (timerJam) clearInterval(timerJam);
+  if (timerFetch) clearInterval(timerFetch);
+  if (abortController.value) abortController.value.abort();
 });
 </script>
 

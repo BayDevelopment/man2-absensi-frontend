@@ -7,6 +7,9 @@ import Navbar from "../../components/AppNavbar.vue";
 import AppFooter from "../../components/AppFooter.vue";
 import Swal from "sweetalert2";
 
+// ============================================================================
+// TOAST & ALERT HELPERS
+// ============================================================================
 function showToast(icon = "error", title = "Terjadi kesalahan.") {
   Swal.fire({
     toast: true,
@@ -63,15 +66,13 @@ function showAbsensiAlert(error) {
     server_error: ["error", message],
   };
 
-  if (errorMap[type]) {
-    const [icon, title] = errorMap[type];
-    showToast(icon, title);
-    return;
-  }
-
-  showToast("error", message);
+  const [icon, title] = errorMap[type] ?? ["error", message];
+  showToast(icon, title);
 }
 
+// ============================================================================
+// STORE & REACTIVE STATE
+// ============================================================================
 const authStore = useAuthStore();
 const sidebarOpen = ref(false);
 
@@ -97,25 +98,36 @@ const skeletonPills = Array.from({ length: 3 }, (_, i) => i);
 
 const showPageSkeleton = computed(() => loadingPage.value && attendanceRecords.value.length === 0);
 
+// FIX #2: 1 detik karena nowHms() pakai detik untuk perbandingan window absen
 const nowTime = ref(new Date());
 let clockInterval = null;
 
+// FIX #5: AbortController untuk cegah race condition saat ganti tab cepat
+const abortController = ref(null);
+
 const serverTodayDate = ref(localTodayYmd());
 
+// ============================================================================
+// LIFECYCLE
+// ============================================================================
 onMounted(() => {
   fetchAbsensi();
 
+  // FIX #2: interval 1 detik agar nowHms() akurat untuk cek window absen
   clockInterval = setInterval(() => {
     nowTime.value = new Date();
-  }, 30_000);
+  }, 1_000);
 });
 
 onUnmounted(() => {
-  if (clockInterval) {
-    clearInterval(clockInterval);
-  }
+  if (clockInterval) clearInterval(clockInterval);
+  // FIX #5: batalkan request yang masih pending saat komponen di-unmount
+  if (abortController.value) abortController.value.abort();
 });
 
+// ============================================================================
+// WAKTU & TANGGAL HELPERS
+// ============================================================================
 const today = computed(() =>
   nowTime.value.toLocaleDateString("id-ID", {
     weekday: "long",
@@ -125,30 +137,16 @@ const today = computed(() =>
   }),
 );
 
-function cleanName(value) {
-  const name = String(value ?? "").trim();
-  return name.length > 0 ? name : null;
-}
-
-const userDisplayName = computed(() => {
-  const siswaName = cleanName(currentSiswa.value?.nama_lengkap ?? currentSiswa.value?.nama);
-  const authName = cleanName(authStore.user?.name);
-
-  return siswaName || authName || "Siswa";
-});
-
 function localTodayYmd() {
   const d = nowTime.value ?? new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
-
   return `${y}-${m}-${day}`;
 }
 
 function nowHms() {
   const d = nowTime.value;
-
   return (
     String(d.getHours()).padStart(2, "0") +
     ":" +
@@ -157,30 +155,6 @@ function nowHms() {
     String(d.getSeconds()).padStart(2, "0")
   );
 }
-
-const izinForm = ref({
-  tanggal: localTodayYmd(),
-  jenis: "izin",
-  keterangan: "",
-  file: null,
-  jadwal_id: null,
-});
-
-watch(
-  () => izinForm.value.jenis,
-  (jenis) => {
-    if (jenis !== "sakit") {
-      izinForm.value.file = null;
-    }
-  },
-);
-
-watch(
-  () => izinForm.value.tanggal,
-  () => {
-    izinForm.value.jadwal_id = null;
-  },
-);
 
 function dateOnly(dateValue) {
   if (!dateValue) return "";
@@ -193,34 +167,55 @@ function isTodayDate(dateValue) {
 
 function formatTanggal(dateStr) {
   if (!dateStr) return "—";
-
   const cleanDate = dateOnly(dateStr);
   const [year, month, day] = cleanDate.split("-");
-
   if (!year || !month || !day) return "—";
-
   const d = new Date(Number(year), Number(month) - 1, Number(day));
-
-  return d.toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
 
 function getHari(dateStr) {
   if (!dateStr) return "—";
-
   const cleanDate = dateOnly(dateStr);
   const [year, month, day] = cleanDate.split("-");
-
   if (!year || !month || !day) return "—";
-
   const d = new Date(Number(year), Number(month) - 1, Number(day));
-
   return d.toLocaleDateString("id-ID", { weekday: "long" });
 }
 
+function ucfirst(str) {
+  if (!str) return "";
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+
+function normalizeHms(value) {
+  if (!value || value === "—") return null;
+  const [hour = "00", minute = "00", second = "00"] = String(value).split(":");
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}`;
+}
+
+function displayTime(value) {
+  if (!value) return "—";
+  return String(value).slice(0, 5);
+}
+
+// ============================================================================
+// USER DISPLAY NAME
+// ============================================================================
+function cleanName(value) {
+  const name = String(value ?? "").trim();
+  return name.length > 0 ? name : null;
+}
+
+const userDisplayName = computed(() => {
+  const siswaName = cleanName(currentSiswa.value?.nama_lengkap ?? currentSiswa.value?.nama);
+  const authName = cleanName(authStore.user?.name);
+  return siswaName || authName || "Siswa";
+});
+
+// ============================================================================
+// STATUS CONFIG & MAPPING
+// ============================================================================
 const statusConfig = {
   Hadir: { cls: "badge-hadir", dot: "#16a34a" },
   Terlambat: { cls: "badge-terlambat", dot: "#9333ea" },
@@ -242,7 +237,6 @@ function backendStatusToUi(status) {
     Sakit: "Sakit",
     Alfa: "Alfa",
   };
-
   return map[status] ?? "Alfa";
 }
 
@@ -252,11 +246,6 @@ function getStatusClass(status) {
 
 function getStatusDot(status) {
   return statusConfig[status]?.dot ?? "#dc2626";
-}
-
-function displayTime(value) {
-  if (!value) return "—";
-  return String(value).slice(0, 5);
 }
 
 function recordKey(record) {
@@ -307,12 +296,20 @@ function mapAbsensi(item) {
   };
 }
 
+// ============================================================================
+// FETCH ABSENSI
+// ============================================================================
 async function fetchAbsensi() {
+  // FIX #5: abort request sebelumnya agar tidak race condition
+  if (abortController.value) abortController.value.abort();
+  abortController.value = new AbortController();
+
   try {
     loadingPage.value = true;
 
     const res = await api.get(ABSENSI_API, {
       params: { range: activeTab.value },
+      signal: abortController.value.signal, // FIX #5
     });
 
     if (res.data.meta?.tanggal_hari_ini) {
@@ -326,60 +323,55 @@ async function fetchAbsensi() {
     const rows = Array.isArray(res.data.data) ? res.data.data : [];
     attendanceRecords.value = rows.map(mapAbsensi);
   } catch (error) {
-    console.error(error);
-    showToast("error", error.response?.data?.message || "Gagal mengambil data absensi");
+    // FIX #5: abaikan error dari abort yang disengaja
+    if (error.name === "CanceledError") return;
+    console.error("[Absensi] Gagal fetch:", error);
+    showToast("error", error.response?.data?.message || "Gagal mengambil data absensi.");
   } finally {
     loadingPage.value = false;
   }
 }
 
+// Re-fetch saat tab berganti
 watch(activeTab, () => fetchAbsensi());
 
-async function absenMasuk(record) {
-  if (!record?.jadwal_id) {
-    showToast("warning", "Jadwal tidak ditemukan.");
-    return;
+// ============================================================================
+// IZIN FORM
+// ============================================================================
+const izinForm = ref({
+  tanggal: localTodayYmd(),
+  jenis: "izin",
+  keterangan: "",
+  file: null,
+  jadwal_id: null,
+});
+
+// Bersihkan file jika jenis bukan sakit
+watch(
+  () => izinForm.value.jenis,
+  (jenis) => {
+    if (jenis !== "sakit") izinForm.value.file = null;
+  },
+);
+
+// Reset jadwal_id jika tanggal berubah
+watch(
+  () => izinForm.value.tanggal,
+  () => {
+    izinForm.value.jadwal_id = null;
+  },
+);
+
+// FIX #1: sync izinForm.tanggal jika hari berganti (misal halaman dibuka semalam)
+watch(serverTodayDate, (newDate) => {
+  if (izinForm.value.tanggal === localTodayYmd()) {
+    izinForm.value.tanggal = newDate;
   }
+});
 
-  try {
-    loadingActionKey.value = recordKey(record);
-
-    const res = await api.post(`${ABSENSI_API}/masuk`, {
-      jadwal_id: record.jadwal_id,
-      kelas_id: record.kelas_id,
-    });
-
-    showToast("success", res.data.message || "Absen masuk berhasil.");
-    await fetchAbsensi();
-  } catch (error) {
-    showAbsensiAlert(error);
-  } finally {
-    loadingActionKey.value = null;
-  }
-}
-
-async function absenKeluar(record) {
-  if (!record?.jadwal_id) {
-    showToast("warning", "Jadwal tidak ditemukan.");
-    return;
-  }
-
-  try {
-    loadingActionKey.value = recordKey(record);
-
-    const res = await api.post(`${ABSENSI_API}/keluar`, {
-      jadwal_id: record.jadwal_id,
-    });
-
-    showToast("success", res.data.message || "Absen keluar berhasil.");
-    await fetchAbsensi();
-  } catch (error) {
-    showAbsensiAlert(error);
-  } finally {
-    loadingActionKey.value = null;
-  }
-}
-
+// ============================================================================
+// ACTION GUARDS
+// ============================================================================
 function canCheckIn(record) {
   return (
     Boolean(record?.canAbsenMasuk) &&
@@ -389,20 +381,9 @@ function canCheckIn(record) {
   );
 }
 
-// Siswa tidak melakukan absen keluar dari halaman ini.
-// Jam keluar / status akhir dikelola oleh guru atau admin agar tidak bisa diakali lewat inspect element.
+// Absen keluar dikelola guru/admin — siswa tidak bisa melakukan dari sini
 function canCheckOut() {
   return false;
-}
-
-function normalizeHms(value) {
-  if (!value || value === "—") return null;
-
-  const [hour = "00", minute = "00", second = "00"] = String(value).split(":");
-
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:${String(
-    second,
-  ).padStart(2, "0")}`;
 }
 
 function isStudentMorningWindowOpen(record) {
@@ -417,17 +398,15 @@ function isStudentMorningWindowOpen(record) {
     record.batasTerlambat !== "—" ? record.batasTerlambat : record.jamTutupAbsensi,
   );
 
-  // Jika backend tidak mengirim jam pembanding, gunakan flag backend sebagai sumber utama.
+  // Fallback ke flag backend jika jam tidak tersedia
   if (!start || !end) return Boolean(record.canIzinSakit);
 
   const jamSekarang = nowHms();
-
   return jamSekarang >= start && jamSekarang <= end;
 }
 
 function canAjukanIzin(record) {
   if (!record) return false;
-
   return (
     Boolean(record.canIzinSakit) &&
     isStudentMorningWindowOpen(record) &&
@@ -442,35 +421,21 @@ function canAjukanIzin(record) {
   );
 }
 
-const headerIzinRecord = computed(() => todayRecords.value.find((r) => canAjukanIzin(r)) ?? null);
-
-const isHeaderIzinDisabled = computed(() => !headerIzinRecord.value || loadingIzin.value);
-
-const headerIzinTitle = computed(() => {
-  if (headerIzinRecord.value) return "Ajukan izin/sakit untuk absen pagi";
-
-  const firstToday = todayRecords.value.find((r) => r.isFirstMapel) ?? todayRecords.value[0];
-
-  return firstToday?.actionText || "Izin/Sakit hanya tersedia pada jam absen pagi.";
-});
-
+// ============================================================================
+// COMPUTED — STATS
+// ============================================================================
 const totalHadir = computed(
   () => attendanceRecords.value.filter((r) => r.status === "Hadir").length,
 );
-
 const totalTerlambat = computed(
   () => attendanceRecords.value.filter((r) => r.status === "Terlambat").length,
 );
-
 const totalIzinSakit = computed(
   () => attendanceRecords.value.filter((r) => ["Izin", "Sakit"].includes(r.status)).length,
 );
-
 const persenHadir = computed(() => {
   const valid = attendanceRecords.value.length;
-
   if (!valid) return 0;
-
   return Math.round(((totalHadir.value + totalTerlambat.value) / valid) * 100);
 });
 
@@ -509,44 +474,39 @@ const stats = computed(() => [
   },
 ]);
 
+// ============================================================================
+// COMPUTED — FILTER & RECORDS
+// ============================================================================
 const matpelOptions = computed(() => [...new Set(attendanceRecords.value.map((r) => r.matpel))]);
 
 const filteredRecords = computed(() => {
   return attendanceRecords.value
     .filter((r) => {
       const search = searchQuery.value.toLowerCase();
-
       const matchSearch =
         !searchQuery.value ||
         r.matpel.toLowerCase().includes(search) ||
         r.guru.toLowerCase().includes(search) ||
         r.hari.toLowerCase().includes(search);
-
       const matchStatus = !filterStatus.value || r.status === filterStatus.value;
       const matchMatpel = !filterMatpel.value || r.matpel === filterMatpel.value;
 
       let matchTab = true;
-
       if (activeTab.value === "hari") {
         matchTab = isTodayDate(r.tanggal);
       } else if (activeTab.value === "minggu") {
         const recordDate = new Date(dateOnly(r.tanggal));
         const now = new Date();
         const start = new Date(now);
-
         start.setDate(now.getDate() - now.getDay() + 1);
         start.setHours(0, 0, 0, 0);
-
         const end = new Date(start);
-
         end.setDate(start.getDate() + 6);
         end.setHours(23, 59, 59, 999);
-
         matchTab = recordDate >= start && recordDate <= end;
       } else if (activeTab.value === "bulan") {
         const recordDate = new Date(dateOnly(r.tanggal));
         const now = new Date();
-
         matchTab =
           recordDate.getMonth() === now.getMonth() &&
           recordDate.getFullYear() === now.getFullYear();
@@ -566,8 +526,9 @@ const todayRecords = computed(() =>
     .sort((a, b) => (a.jamJadwalMulai || "").localeCompare(b.jamJadwalMulai || "")),
 );
 
+// FIX #4: pakai HH:mm saja untuk perbandingan agar konsisten dengan displayTime()
 const activeTodayRecord = computed(() => {
-  const jam = nowHms();
+  const jamHm = nowHms().slice(0, 5); // HH:mm
 
   const bisaMasuk = todayRecords.value.find((r) => canCheckIn(r));
   if (bisaMasuk) return bisaMasuk;
@@ -576,21 +537,63 @@ const activeTodayRecord = computed(() => {
     (r) =>
       r.jamJadwalMulai !== "—" &&
       r.jamJadwalSelesai !== "—" &&
-      jam >= r.jamJadwalMulai + ":00" &&
-      jam <= r.jamJadwalSelesai + ":59",
+      jamHm >= r.jamJadwalMulai &&
+      jamHm <= r.jamJadwalSelesai,
   );
-
   if (sedangBerlangsung) return sedangBerlangsung;
 
   const berikutnya = todayRecords.value.find(
-    (r) => r.jamJadwalMulai !== "—" && jam < r.jamJadwalMulai + ":00",
+    (r) => r.jamJadwalMulai !== "—" && jamHm < r.jamJadwalMulai,
   );
-
   if (berikutnya) return berikutnya;
 
   return todayRecords.value[0] ?? null;
 });
 
+// ============================================================================
+// COMPUTED — IZIN HEADER & FORM OPTIONS
+// ============================================================================
+const headerIzinRecord = computed(() => todayRecords.value.find((r) => canAjukanIzin(r)) ?? null);
+const isHeaderIzinDisabled = computed(() => !headerIzinRecord.value || loadingIzin.value);
+const headerIzinTitle = computed(() => {
+  if (headerIzinRecord.value) return "Ajukan izin/sakit untuk absen pagi";
+  const firstToday = todayRecords.value.find((r) => r.isFirstMapel) ?? todayRecords.value[0];
+  return firstToday?.actionText || "Izin/Sakit hanya tersedia pada jam absen pagi.";
+});
+
+const todayJadwalOptions = computed(() => {
+  if (!izinForm.value.tanggal) return [];
+  const tanggalDipilih = izinForm.value.tanggal;
+  return attendanceRecords.value
+    .filter((r) => r.tanggal === tanggalDipilih && canAjukanIzin(r))
+    .map((r) => ({
+      jadwal_id: r.jadwal_id,
+      label: `${r.matpel} — Absen pagi ${r.jamBukaAbsensi || r.jamJadwalMulai} s/d ${r.batasTerlambat || "—"}`,
+    }));
+});
+
+const izinSubmitDisabled = computed(() => {
+  if (loadingIzin.value) return true;
+  if (!izinForm.value.tanggal) return true;
+  if (!izinForm.value.jadwal_id) return true;
+
+  const selected = attendanceRecords.value.find(
+    (r) =>
+      Number(r.jadwal_id) === Number(izinForm.value.jadwal_id) &&
+      r.tanggal === izinForm.value.tanggal,
+  );
+  if (!canAjukanIzin(selected)) return true;
+
+  if (izinForm.value.jenis === "sakit") {
+    return !izinForm.value.keterangan || !izinForm.value.file;
+  }
+
+  return false;
+});
+
+// ============================================================================
+// COMPUTED — TODAY ATTENDANCE INFO
+// ============================================================================
 const todayAttendanceInfo = computed(() => {
   const record = activeTodayRecord.value;
 
@@ -643,7 +646,6 @@ const todayAttendanceInfo = computed(() => {
         statusType: "success",
       };
     }
-
     return {
       title: "Kamu sudah absen masuk",
       desc: mapelInfo,
@@ -696,9 +698,46 @@ const todayAttendanceInfo = computed(() => {
   };
 });
 
-function ucfirst(str) {
-  if (!str) return "";
-  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+// ============================================================================
+// AKSI ABSEN
+// ============================================================================
+async function absenMasuk(record) {
+  if (!record?.jadwal_id) {
+    showToast("warning", "Jadwal tidak ditemukan.");
+    return;
+  }
+  try {
+    loadingActionKey.value = recordKey(record);
+    const res = await api.post(`${ABSENSI_API}/masuk`, {
+      jadwal_id: record.jadwal_id,
+      kelas_id: record.kelas_id,
+    });
+    showToast("success", res.data.message || "Absen masuk berhasil.");
+    await fetchAbsensi();
+  } catch (error) {
+    showAbsensiAlert(error);
+  } finally {
+    loadingActionKey.value = null;
+  }
+}
+
+async function absenKeluar(record) {
+  if (!record?.jadwal_id) {
+    showToast("warning", "Jadwal tidak ditemukan.");
+    return;
+  }
+  try {
+    loadingActionKey.value = recordKey(record);
+    const res = await api.post(`${ABSENSI_API}/keluar`, {
+      jadwal_id: record.jadwal_id,
+    });
+    showToast("success", res.data.message || "Absen keluar berhasil.");
+    await fetchAbsensi();
+  } catch (error) {
+    showAbsensiAlert(error);
+  } finally {
+    loadingActionKey.value = null;
+  }
 }
 
 async function absenMasukHariIni() {
@@ -706,45 +745,12 @@ async function absenMasukHariIni() {
     showToast("warning", "Tidak ada jadwal absensi hari ini.");
     return;
   }
-
   await absenMasuk(activeTodayRecord.value);
 }
 
-const todayJadwalOptions = computed(() => {
-  if (!izinForm.value.tanggal) return [];
-
-  const tanggalDipilih = izinForm.value.tanggal;
-
-  return attendanceRecords.value
-    .filter((r) => r.tanggal === tanggalDipilih && canAjukanIzin(r))
-    .map((r) => ({
-      jadwal_id: r.jadwal_id,
-      label: `${r.matpel} — Absen pagi ${r.jamBukaAbsensi || r.jamJadwalMulai} s/d ${
-        r.batasTerlambat || "—"
-      }`,
-    }));
-});
-
-const izinSubmitDisabled = computed(() => {
-  if (loadingIzin.value) return true;
-  if (!izinForm.value.tanggal) return true;
-  if (!izinForm.value.jadwal_id) return true;
-
-  const selected = attendanceRecords.value.find(
-    (r) =>
-      Number(r.jadwal_id) === Number(izinForm.value.jadwal_id) &&
-      r.tanggal === izinForm.value.tanggal,
-  );
-
-  if (!canAjukanIzin(selected)) return true;
-
-  if (izinForm.value.jenis === "sakit") {
-    return !izinForm.value.keterangan || !izinForm.value.file;
-  }
-
-  return false;
-});
-
+// ============================================================================
+// MODAL
+// ============================================================================
 function openDetail(record) {
   selectedRecord.value = record;
   modalMode.value = "view";
@@ -782,6 +788,9 @@ function handleFileUpload(e) {
   izinForm.value.file = e.target.files?.[0] ?? null;
 }
 
+// ============================================================================
+// SUBMIT IZIN
+// ============================================================================
 async function submitIzin() {
   if (!izinForm.value.jadwal_id) {
     showToast("warning", "Pilih jadwal yang ingin diizinkan terlebih dahulu.");
@@ -821,6 +830,17 @@ async function submitIzin() {
 
     showToast("success", res.data.message || "Pengajuan berhasil dikirim.");
     closeModal();
+
+    // FIX #6: reset form dan input file setelah submit berhasil
+    izinForm.value = {
+      tanggal: serverTodayDate.value,
+      jenis: "izin",
+      keterangan: "",
+      file: null,
+      jadwal_id: null,
+    };
+    if (fileInput.value) fileInput.value.value = "";
+
     await fetchAbsensi();
   } catch (error) {
     showAbsensiAlert(error);

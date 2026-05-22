@@ -1,254 +1,96 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useAuthStore } from "../../stores/auth";
 import Sidebar from "../../components/AppSidebar.vue";
 import Navbar from "../../components/AppNavbar.vue";
 import AppFooter from "../../components/AppFooter.vue";
+import api from "../../plugins/axios";
 
+// ============================================================================
+// STORE & STATE
+// ============================================================================
 const authStore = useAuthStore();
 const sidebarOpen = ref(false);
 
-const selectedBulan = ref("2025-07");
+const selectedBulan = ref("");
 const filterStatus = ref("");
+const bulanOptions = ref([]);
 
-const bulanOptions = [
-  { value: "2025-07", label: "Juli 2025" },
-  { value: "2025-06", label: "Juni 2025" },
-  { value: "2025-05", label: "Mei 2025" },
-  { value: "2025-04", label: "April 2025" },
-  { value: "2025-03", label: "Maret 2025" },
-  { value: "2025-02", label: "Februari 2025" },
-  { value: "2025-01", label: "Januari 2025" },
-];
+const allRiwayat = ref([]);
+const isLoading = ref(false);
+const isError = ref(false);
+const errorMsg = ref("");
 
-// ── Data dummy per bulan ──────────────────────────────────────────────────
-const allRiwayat = ref([
-  // Juli 2025
-  {
-    id: 1,
-    bulan: "2025-07",
-    tanggal: "2025-07-07",
-    hari: "Senin",
-    matpel: "Matematika",
-    status: "Hadir",
-    jam: "07:05",
-    ket: "—",
-  },
-  {
-    id: 2,
-    bulan: "2025-07",
-    tanggal: "2025-07-07",
-    hari: "Senin",
-    matpel: "Bahasa Indonesia",
-    status: "Hadir",
-    jam: "09:00",
-    ket: "—",
-  },
-  {
-    id: 3,
-    bulan: "2025-07",
-    tanggal: "2025-07-08",
-    hari: "Selasa",
-    matpel: "Fisika",
-    status: "Terlambat",
-    jam: "07:42",
-    ket: "Macet",
-  },
-  {
-    id: 4,
-    bulan: "2025-07",
-    tanggal: "2025-07-08",
-    hari: "Selasa",
-    matpel: "Kimia",
-    status: "Izin",
-    jam: "—",
-    ket: "Acara keluarga",
-  },
-  {
-    id: 5,
-    bulan: "2025-07",
-    tanggal: "2025-07-09",
-    hari: "Rabu",
-    matpel: "Biologi",
-    status: "Hadir",
-    jam: "07:08",
-    ket: "—",
-  },
-  {
-    id: 6,
-    bulan: "2025-07",
-    tanggal: "2025-07-09",
-    hari: "Rabu",
-    matpel: "Sejarah",
-    status: "Hadir",
-    jam: "09:00",
-    ket: "—",
-  },
-  {
-    id: 7,
-    bulan: "2025-07",
-    tanggal: "2025-07-10",
-    hari: "Kamis",
-    matpel: "Matematika",
-    status: "Sakit",
-    jam: "—",
-    ket: "Demam",
-  },
-  {
-    id: 8,
-    bulan: "2025-07",
-    tanggal: "2025-07-11",
-    hari: "Jumat",
-    matpel: "Pendidikan Agama",
-    status: "Hadir",
-    jam: "07:00",
-    ket: "—",
-  },
-  {
-    id: 9,
-    bulan: "2025-07",
-    tanggal: "2025-07-14",
-    hari: "Senin",
-    matpel: "Ekonomi",
-    status: "Hadir",
-    jam: "07:10",
-    ket: "—",
-  },
-  {
-    id: 10,
-    bulan: "2025-07",
-    tanggal: "2025-07-14",
-    hari: "Senin",
-    matpel: "Geografi",
-    status: "Hadir",
-    jam: "09:00",
-    ket: "—",
-  },
-  {
-    id: 11,
-    bulan: "2025-07",
-    tanggal: "2025-07-15",
-    hari: "Selasa",
-    matpel: "Bahasa Inggris",
-    status: "Hadir",
-    jam: "07:05",
-    ket: "—",
-  },
-  {
-    id: 12,
-    bulan: "2025-07",
-    tanggal: "2025-07-15",
-    hari: "Selasa",
-    matpel: "Seni Budaya",
-    status: "Alfa",
-    jam: "—",
-    ket: "Tanpa keterangan",
-  },
-  // Juni 2025
-  {
-    id: 13,
-    bulan: "2025-06",
-    tanggal: "2025-06-02",
-    hari: "Senin",
-    matpel: "Matematika",
-    status: "Hadir",
-    jam: "07:03",
-    ket: "—",
-  },
-  {
-    id: 14,
-    bulan: "2025-06",
-    tanggal: "2025-06-02",
-    hari: "Senin",
-    matpel: "Fisika",
-    status: "Hadir",
-    jam: "09:00",
-    ket: "—",
-  },
-  {
-    id: 15,
-    bulan: "2025-06",
-    tanggal: "2025-06-03",
-    hari: "Selasa",
-    matpel: "Kimia",
-    status: "Izin",
-    jam: "—",
-    ket: "Lomba sekolah",
-  },
-  {
-    id: 16,
-    bulan: "2025-06",
-    tanggal: "2025-06-03",
-    hari: "Selasa",
-    matpel: "Biologi",
-    status: "Hadir",
-    jam: "07:12",
-    ket: "—",
-  },
-  {
-    id: 17,
-    bulan: "2025-06",
-    tanggal: "2025-06-04",
-    hari: "Rabu",
-    matpel: "Sejarah",
-    status: "Hadir",
-    jam: "07:05",
-    ket: "—",
-  },
-  {
-    id: 18,
-    bulan: "2025-06",
-    tanggal: "2025-06-05",
-    hari: "Kamis",
-    matpel: "Ekonomi",
-    status: "Terlambat",
-    jam: "07:50",
-    ket: "Ban bocor",
-  },
-  // Mei 2025
-  {
-    id: 19,
-    bulan: "2025-05",
-    tanggal: "2025-05-05",
-    hari: "Senin",
-    matpel: "Matematika",
-    status: "Hadir",
-    jam: "07:04",
-    ket: "—",
-  },
-  {
-    id: 20,
-    bulan: "2025-05",
-    tanggal: "2025-05-06",
-    hari: "Selasa",
-    matpel: "Fisika",
-    status: "Sakit",
-    jam: "—",
-    ket: "Flu berat",
-  },
-  {
-    id: 21,
-    bulan: "2025-05",
-    tanggal: "2025-05-07",
-    hari: "Rabu",
-    matpel: "Kimia",
-    status: "Hadir",
-    jam: "07:08",
-    ket: "—",
-  },
-]);
+// AbortController untuk cegah race condition saat filter berganti cepat
+const abortController = ref(null);
 
-// ── Computed ──────────────────────────────────────────────────────────────
-const filtered = computed(() =>
-  allRiwayat.value.filter((r) => {
-    const matchBulan = r.bulan === selectedBulan.value;
-    const matchStatus = !filterStatus.value || r.status === filterStatus.value;
-    return matchBulan && matchStatus;
-  }),
-);
+// ============================================================================
+// FETCH DATA DARI API
+// ============================================================================
+async function fetchRiwayat() {
+  if (abortController.value) abortController.value.abort();
+  abortController.value = new AbortController();
 
+  isLoading.value = true;
+  isError.value = false;
+  errorMsg.value = "";
+
+  try {
+    const params = {};
+    if (selectedBulan.value) params.bulan = selectedBulan.value;
+    if (filterStatus.value) params.status = filterStatus.value;
+
+    const res = await api.get("/api/riwayat", {
+      params,
+      signal: abortController.value.signal,
+    });
+
+    // Ambil opsi bulan dari meta jika tersedia
+    if (Array.isArray(res.data.meta?.bulan_options)) {
+      bulanOptions.value = res.data.meta.bulan_options;
+      // Set default bulan ke yang pertama jika belum dipilih
+      if (!selectedBulan.value && bulanOptions.value.length > 0) {
+        selectedBulan.value = bulanOptions.value[0].value;
+      }
+    }
+
+    allRiwayat.value = Array.isArray(res.data.data) ? res.data.data : [];
+  } catch (err) {
+    if (err.name === "CanceledError") return;
+    console.error("[Riwayat] Gagal fetch:", err);
+    isError.value = true;
+    if (err.response?.status === 401) {
+      errorMsg.value = "Sesi habis. Silakan login kembali.";
+    } else if (err.response?.status >= 500) {
+      errorMsg.value = "Server sedang bermasalah. Coba beberapa saat lagi.";
+    } else if (!navigator.onLine) {
+      errorMsg.value = "Tidak ada koneksi internet.";
+    } else {
+      errorMsg.value = "Gagal memuat data riwayat.";
+    }
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+onMounted(() => {
+  fetchRiwayat();
+});
+
+// Re-fetch saat filter berubah
+// (bulan & status dikirim sebagai params, biarkan backend yang filter)
+function onBulanChange() {
+  fetchRiwayat();
+}
+function onStatusChange() {
+  fetchRiwayat();
+}
+
+// ============================================================================
+// COMPUTED — REKAP
+// ============================================================================
 const rekap = computed(() => {
-  const data = filtered.value;
+  const data = allRiwayat.value;
   const total = data.length;
   const hadir = data.filter((r) => r.status === "Hadir").length;
   const terlambat = data.filter((r) => r.status === "Terlambat").length;
@@ -259,17 +101,28 @@ const rekap = computed(() => {
   return { total, hadir, terlambat, izin, sakit, alfa, persen };
 });
 
-// ── Group by tanggal ──────────────────────────────────────────────────────
+// ============================================================================
+// COMPUTED — GROUP BY TANGGAL
+// ============================================================================
 const groupedByDate = computed(() => {
   const groups = {};
-  filtered.value.forEach((r) => {
-    if (!groups[r.tanggal]) groups[r.tanggal] = { tanggal: r.tanggal, hari: r.hari, items: [] };
-    groups[r.tanggal].items.push(r);
+  allRiwayat.value.forEach((r) => {
+    const key = r.tanggal;
+    if (!groups[key]) groups[key] = { tanggal: r.tanggal, hari: r.hari, items: [] };
+    groups[key].items.push(r);
   });
   return Object.values(groups).sort((a, b) => b.tanggal.localeCompare(a.tanggal));
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// ============================================================================
+// SKELETON
+// ============================================================================
+const skeletonGroups = Array.from({ length: 3 });
+const skeletonItems = Array.from({ length: 2 });
+
+// ============================================================================
+// HELPERS
+// ============================================================================
 const statusConfig = {
   Hadir: { cls: "badge-hadir", dot: "#16a34a" },
   Terlambat: { cls: "badge-terlambat", dot: "#9333ea" },
@@ -277,12 +130,15 @@ const statusConfig = {
   Sakit: { cls: "badge-sakit", dot: "#2563eb" },
   Alfa: { cls: "badge-alfa", dot: "#dc2626" },
 };
+
 function sc(s) {
-  return statusConfig[s] ?? statusConfig.Hadir;
+  return statusConfig[s] ?? statusConfig.Alfa;
 }
 
 function formatTgl(str) {
-  return new Date(str).toLocaleDateString("id-ID", {
+  if (!str) return "—";
+  const [y, m, d] = str.split("-");
+  return new Date(Number(y), Number(m) - 1, Number(d)).toLocaleDateString("id-ID", {
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -303,7 +159,7 @@ const today = new Date().toLocaleDateString("id-ID", {
     <div class="layout-main">
       <Navbar @toggle-sidebar="sidebarOpen = !sidebarOpen" />
       <main class="layout-content">
-        <!-- Header -->
+        <!-- ── Header ── -->
         <div class="dash-header">
           <div>
             <h1 class="dash-title">Riwayat Absensi</h1>
@@ -311,25 +167,17 @@ const today = new Date().toLocaleDateString("id-ID", {
           </div>
           <div class="header-right">
             <span class="dash-date">{{ today }}</span>
-            <button class="btn btn-outline">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-                />
-              </svg>
-              Ekspor PDF
-            </button>
           </div>
         </div>
 
-        <!-- Filter bar -->
+        <!-- ── Filter Bar ── -->
         <div class="filter-bar">
-          <select v-model="selectedBulan" class="filter-select">
+          <select v-model="selectedBulan" class="filter-select" @change="onBulanChange">
+            <option value="">Semua Bulan</option>
             <option v-for="b in bulanOptions" :key="b.value" :value="b.value">{{ b.label }}</option>
           </select>
-          <select v-model="filterStatus" class="filter-select">
+
+          <select v-model="filterStatus" class="filter-select" @change="onStatusChange">
             <option value="">Semua Status</option>
             <option>Hadir</option>
             <option>Terlambat</option>
@@ -337,90 +185,150 @@ const today = new Date().toLocaleDateString("id-ID", {
             <option>Sakit</option>
             <option>Alfa</option>
           </select>
-          <span class="rec-badge">{{ filtered.length }} catatan</span>
+
+          <span class="rec-badge">
+            {{ isLoading ? "…" : allRiwayat.length + " catatan" }}
+          </span>
         </div>
 
-        <!-- Rekap cards -->
-        <div class="rekap-grid">
-          <div class="rekap-card" style="--c: #16a34a; --bg: #f0fdf4">
-            <div class="rekap-val">{{ rekap.hadir }}</div>
-            <div class="rekap-lbl">Hadir</div>
-          </div>
-          <div class="rekap-card" style="--c: #9333ea; --bg: #fdf4ff">
-            <div class="rekap-val">{{ rekap.terlambat }}</div>
-            <div class="rekap-lbl">Terlambat</div>
-          </div>
-          <div class="rekap-card" style="--c: #d97706; --bg: #fffbeb">
-            <div class="rekap-val">{{ rekap.izin }}</div>
-            <div class="rekap-lbl">Izin</div>
-          </div>
-          <div class="rekap-card" style="--c: #2563eb; --bg: #eff6ff">
-            <div class="rekap-val">{{ rekap.sakit }}</div>
-            <div class="rekap-lbl">Sakit</div>
-          </div>
-          <div class="rekap-card" style="--c: #dc2626; --bg: #fef2f2">
-            <div class="rekap-val">{{ rekap.alfa }}</div>
-            <div class="rekap-lbl">Alfa</div>
-          </div>
-          <div
-            class="rekap-card persen-card"
-            :style="{
-              '--c': rekap.persen >= 80 ? '#16a34a' : '#dc2626',
-              '--bg': rekap.persen >= 80 ? '#f0fdf4' : '#fef2f2',
-            }"
-          >
-            <div class="rekap-val">{{ rekap.persen }}<span style="font-size: 14px">%</span></div>
-            <div class="rekap-lbl">Kehadiran</div>
-            <div class="mini-bar-bg">
-              <div
-                class="mini-bar-fill"
-                :style="{ width: rekap.persen + '%', background: 'var(--c)' }"
-              />
-            </div>
-          </div>
+        <!-- ── Error State ── -->
+        <div v-if="isError" class="error-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+            />
+          </svg>
+          <p>{{ errorMsg }}</p>
+          <button class="btn btn-retry" @click="fetchRiwayat">Coba Lagi</button>
         </div>
 
-        <!-- Timeline riwayat -->
-        <div class="timeline-card">
-          <div class="table-head-bar">
-            <h3 class="table-title">Detail Per Hari</h3>
-          </div>
-
-          <div v-if="groupedByDate.length === 0" class="empty-state">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5"
-              />
-            </svg>
-            <p>Tidak ada data untuk bulan ini</p>
-          </div>
-
-          <div v-for="group in groupedByDate" :key="group.tanggal" class="day-group">
-            <div class="day-header">
-              <span class="day-label">{{ group.hari }}, {{ formatTgl(group.tanggal) }}</span>
-              <span class="day-count">{{ group.items.length }} pelajaran</span>
+        <template v-else>
+          <!-- ── Rekap Cards — Skeleton ── -->
+          <div class="rekap-grid" v-if="isLoading">
+            <div v-for="i in 6" :key="i" class="rekap-card skeleton-card">
+              <div class="skel skel-val"></div>
+              <div class="skel skel-lbl"></div>
             </div>
-            <div class="day-items">
-              <div v-for="item in group.items" :key="item.id" class="day-item">
-                <div class="item-left">
-                  <span class="item-dot" :style="{ background: sc(item.status).dot }"></span>
-                  <div>
-                    <div class="item-mapel">{{ item.matpel }}</div>
-                    <div class="item-jam">
-                      Jam masuk: <b>{{ item.jam }}</b>
-                    </div>
-                  </div>
-                </div>
-                <div class="item-right">
-                  <span class="badge" :class="sc(item.status).cls">{{ item.status }}</span>
-                  <span v-if="item.ket !== '—'" class="item-ket">{{ item.ket }}</span>
-                </div>
+          </div>
+
+          <!-- ── Rekap Cards ── -->
+          <div class="rekap-grid" v-else>
+            <div class="rekap-card" style="--c: #16a34a; --bg: #f0fdf4">
+              <div class="rekap-val">{{ rekap.hadir }}</div>
+              <div class="rekap-lbl">Hadir</div>
+            </div>
+            <div class="rekap-card" style="--c: #9333ea; --bg: #fdf4ff">
+              <div class="rekap-val">{{ rekap.terlambat }}</div>
+              <div class="rekap-lbl">Terlambat</div>
+            </div>
+            <div class="rekap-card" style="--c: #d97706; --bg: #fffbeb">
+              <div class="rekap-val">{{ rekap.izin }}</div>
+              <div class="rekap-lbl">Izin</div>
+            </div>
+            <div class="rekap-card" style="--c: #2563eb; --bg: #eff6ff">
+              <div class="rekap-val">{{ rekap.sakit }}</div>
+              <div class="rekap-lbl">Sakit</div>
+            </div>
+            <div class="rekap-card" style="--c: #dc2626; --bg: #fef2f2">
+              <div class="rekap-val">{{ rekap.alfa }}</div>
+              <div class="rekap-lbl">Alfa</div>
+            </div>
+            <div
+              class="rekap-card persen-card"
+              :style="{
+                '--c': rekap.persen >= 80 ? '#16a34a' : '#dc2626',
+                '--bg': rekap.persen >= 80 ? '#f0fdf4' : '#fef2f2',
+              }"
+            >
+              <div class="rekap-val">{{ rekap.persen }}<span style="font-size: 14px">%</span></div>
+              <div class="rekap-lbl">Kehadiran</div>
+              <div class="mini-bar-bg">
+                <div
+                  class="mini-bar-fill"
+                  :style="{ width: rekap.persen + '%', background: 'var(--c)' }"
+                />
               </div>
             </div>
           </div>
-        </div>
+
+          <!-- ── Timeline ── -->
+          <div class="timeline-card">
+            <div class="table-head-bar">
+              <h3 class="table-title">Detail Per Hari</h3>
+            </div>
+
+            <!-- Skeleton timeline -->
+            <template v-if="isLoading">
+              <div v-for="(_, gi) in skeletonGroups" :key="gi" class="day-group">
+                <div class="day-header">
+                  <div class="skel" style="width: 160px; height: 12px; border-radius: 6px"></div>
+                  <div class="skel" style="width: 60px; height: 12px; border-radius: 6px"></div>
+                </div>
+                <div class="day-items">
+                  <div v-for="(_, ii) in skeletonItems" :key="ii" class="day-item skeleton-item">
+                    <div class="item-left">
+                      <div class="skel" style="width: 8px; height: 8px; border-radius: 50%"></div>
+                      <div>
+                        <div
+                          class="skel"
+                          style="width: 120px; height: 12px; border-radius: 6px; margin-bottom: 6px"
+                        ></div>
+                        <div
+                          class="skel"
+                          style="width: 80px; height: 10px; border-radius: 6px"
+                        ></div>
+                      </div>
+                    </div>
+                    <div class="skel" style="width: 56px; height: 22px; border-radius: 20px"></div>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Empty state -->
+            <div v-else-if="groupedByDate.length === 0" class="empty-state">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5"
+                />
+              </svg>
+              <p>Tidak ada data untuk filter ini</p>
+            </div>
+
+            <!-- Data -->
+            <template v-else>
+              <div v-for="group in groupedByDate" :key="group.tanggal" class="day-group">
+                <div class="day-header">
+                  <span class="day-label">{{ group.hari }}, {{ formatTgl(group.tanggal) }}</span>
+                  <span class="day-count">{{ group.items.length }} pelajaran</span>
+                </div>
+                <div class="day-items">
+                  <div v-for="item in group.items" :key="item.id" class="day-item">
+                    <div class="item-left">
+                      <span class="item-dot" :style="{ background: sc(item.status).dot }"></span>
+                      <div>
+                        <div class="item-mapel">{{ item.matpel }}</div>
+                        <div class="item-jam">
+                          Jam masuk: <b>{{ item.jam || "—" }}</b>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="item-right">
+                      <span class="badge" :class="sc(item.status).cls">{{ item.status }}</span>
+                      <span v-if="item.ket && item.ket !== '—'" class="item-ket">{{
+                        item.ket
+                      }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
       </main>
       <AppFooter />
     </div>
@@ -448,6 +356,7 @@ const today = new Date().toLocaleDateString("id-ID", {
   gap: 20px;
 }
 
+/* ── Header ── */
 .dash-header {
   display: flex;
   align-items: flex-start;
@@ -470,7 +379,6 @@ const today = new Date().toLocaleDateString("id-ID", {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
 }
 .dash-date {
   font-size: 12px;
@@ -482,29 +390,7 @@ const today = new Date().toLocaleDateString("id-ID", {
   white-space: nowrap;
 }
 
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 10px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1.5px solid #d1fae5;
-  background: white;
-  color: #374151;
-  font-family: "Poppins", sans-serif;
-  transition: all 0.15s;
-}
-.btn svg {
-  width: 14px;
-  height: 14px;
-}
-.btn-outline:hover {
-  background: #f0fdf4;
-}
-
+/* ── Filter Bar ── */
 .filter-bar {
   display: flex;
   align-items: center;
@@ -535,6 +421,43 @@ const today = new Date().toLocaleDateString("id-ID", {
   margin-left: auto;
 }
 
+/* ── Error Box ── */
+.error-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 14px;
+  color: #dc2626;
+  text-align: center;
+}
+.error-box svg {
+  width: 32px;
+  height: 32px;
+}
+.error-box p {
+  font-size: 13px;
+  margin: 0;
+}
+.btn-retry {
+  padding: 7px 18px;
+  border-radius: 10px;
+  border: 1.5px solid #fca5a5;
+  background: white;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: "Poppins", sans-serif;
+  cursor: pointer;
+}
+.btn-retry:hover {
+  background: #fef2f2;
+}
+
+/* ── Rekap Grid ── */
 .rekap-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
@@ -573,6 +496,39 @@ const today = new Date().toLocaleDateString("id-ID", {
   transition: width 0.8s ease;
 }
 
+/* ── Skeleton ── */
+.skel {
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  display: block;
+}
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+.skeleton-card {
+  opacity: 0.7;
+}
+.skel-val {
+  width: 40px;
+  height: 26px;
+  border-radius: 6px;
+}
+.skel-lbl {
+  width: 60px;
+  height: 10px;
+  border-radius: 4px;
+}
+.skeleton-item {
+  opacity: 0.7;
+}
+
+/* ── Timeline ── */
 .timeline-card {
   background: white;
   border: 1px solid #e5e7eb;
@@ -592,7 +548,6 @@ const today = new Date().toLocaleDateString("id-ID", {
   color: #111827;
   margin: 0;
 }
-
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -608,7 +563,6 @@ const today = new Date().toLocaleDateString("id-ID", {
 .empty-state p {
   font-size: 13px;
 }
-
 .day-group {
   border-bottom: 1px solid #f3f4f6;
 }
@@ -645,6 +599,7 @@ const today = new Date().toLocaleDateString("id-ID", {
   border-radius: 10px;
   background: #fafafa;
   border: 1px solid #f3f4f6;
+  transition: background 0.15s;
 }
 .day-item:hover {
   background: #f0fdf4;
@@ -683,6 +638,7 @@ const today = new Date().toLocaleDateString("id-ID", {
   font-style: italic;
 }
 
+/* ── Badge ── */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -712,6 +668,7 @@ const today = new Date().toLocaleDateString("id-ID", {
   color: #dc2626;
 }
 
+/* ── Responsive ── */
 @media (max-width: 900px) {
   .rekap-grid {
     grid-template-columns: repeat(3, 1fr);

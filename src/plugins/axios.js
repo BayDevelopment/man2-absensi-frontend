@@ -10,12 +10,14 @@ const api = axios.create({
   },
 });
 
-// ✅ Helper: ambil token dari mana pun
-function getToken() {
+// ─── Helper ───────────────────────────────────────────────────────────────────
+
+/** Ambil token dari localStorage atau sessionStorage */
+export function getToken() {
   return localStorage.getItem("token") || sessionStorage.getItem("token");
 }
 
-// ✅ Helper: set token ke axios
+/** Set / hapus Authorization header di axios */
 export function setAuthToken(token) {
   if (token) {
     api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
@@ -24,8 +26,30 @@ export function setAuthToken(token) {
   }
 }
 
-// Auto set pas load
-const token = getToken();
-if (token) setAuthToken(token);
+/** Hapus semua sisa auth (token + header) */
+export function clearAuth() {
+  localStorage.removeItem("token");
+  sessionStorage.removeItem("token");
+  setAuthToken(null);
+}
+
+// ─── Auto-inject token saat pertama kali load ─────────────────────────────────
+const _initialToken = getToken();
+if (_initialToken) setAuthToken(_initialToken);
+
+// ─── Response interceptor: handle 401 global ─────────────────────────────────
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      clearAuth();
+      // Hindari redirect loop jika sudah di halaman login
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+    }
+    return Promise.reject(error);
+  },
+);
 
 export default api;
