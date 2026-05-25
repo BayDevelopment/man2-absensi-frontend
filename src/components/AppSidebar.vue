@@ -1,6 +1,7 @@
 <script setup>
 import { useRouter, useRoute } from "vue-router";
 import { useAuthStore } from "../stores/auth";
+import { computed } from "vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -10,6 +11,11 @@ defineProps({
   open: { type: Boolean, default: false },
 });
 const emit = defineEmits(["close"]);
+
+// ✅ Data dinamis dari authStore (hasil fetch Api/AuthController -> me)
+const user = computed(() => authStore.user);
+const schoolName = computed(() => user.value?.school_name ?? "MAN 2 Cilegon");
+const appName = computed(() => user.value?.app_name ?? "Absensi Digital");
 
 const navGroups = [
   {
@@ -76,10 +82,16 @@ const isActive = (path) => route.path === path;
 
   <!-- Sidebar -->
   <aside class="sb-root" :class="{ 'sb-open': open }">
-    <!-- Brand -->
+    <!-- ═══ BRAND ═══ -->
     <div class="sb-brand">
       <div class="sb-logo">
-        <svg viewBox="0 0 32 32" fill="none">
+        <!--
+          ✅ LOGO DINAMIS:
+          - Kalau user.logo_url ada → tampilkan <img> dari URL (hasil fetch /me)
+          - Fallback → SVG clipboard hijau default
+        -->
+        <img v-if="user?.logo_url" :src="user.logo_url" :alt="schoolName" class="sb-logo-img" />
+        <svg v-else viewBox="0 0 32 32" fill="none">
           <rect width="32" height="32" rx="9" fill="#16a34a" />
           <rect
             x="8"
@@ -130,10 +142,13 @@ const isActive = (path) => route.path === path;
           />
         </svg>
       </div>
+
       <div class="sb-brand-text">
-        <span class="sb-brand-name">MAN 2 Cilegon</span>
-        <span class="sb-brand-sub">Absensi Digital</span>
+        <!-- ✅ Nama sekolah & sub-label dari API /me -->
+        <span class="sb-brand-name">{{ schoolName }}</span>
+        <span class="sb-brand-sub">{{ appName }}</span>
       </div>
+
       <button class="sb-close" @click="emit('close')" aria-label="Tutup sidebar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -141,7 +156,7 @@ const isActive = (path) => route.path === path;
       </button>
     </div>
 
-    <!-- Nav -->
+    <!-- ═══ NAV — hanya area ini yang scroll ═══ -->
     <nav class="sb-nav">
       <div v-for="group in navGroups" :key="group.label" class="sb-group">
         <p class="sb-group-label">{{ group.label }}</p>
@@ -169,9 +184,7 @@ const isActive = (path) => route.path === path;
       </div>
     </nav>
 
-    <div style="flex: 1" />
-
-    <!-- Footer -->
+    <!-- ═══ FOOTER ═══ -->
     <div class="sb-footer">
       <button class="sb-logout" @click="handleLogout">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -189,6 +202,9 @@ const isActive = (path) => route.path === path;
 </template>
 
 <style scoped>
+/* ════════════════════════════
+   CSS VARIABLES
+════════════════════════════ */
 .sb-root {
   --sb-width: 240px;
   --sb-bg: #ffffff;
@@ -201,6 +217,9 @@ const isActive = (path) => route.path === path;
   --sb-muted: #9ca3af;
 }
 
+/* ════════════════════════════
+   OVERLAY (mobile)
+════════════════════════════ */
 .sb-overlay {
   position: fixed;
   inset: 0;
@@ -217,6 +236,10 @@ const isActive = (path) => route.path === path;
   opacity: 0;
 }
 
+/* ════════════════════════════
+   SIDEBAR ROOT
+   ✅ overflow: hidden agar konten tidak bocor keluar sidebar
+════════════════════════════ */
 .sb-root {
   position: fixed;
   top: 0;
@@ -228,22 +251,23 @@ const isActive = (path) => route.path === path;
   display: flex;
   flex-direction: column;
   z-index: 50;
-  overflow: hidden;
+  overflow: hidden; /* ✅ KRITIS: cegah sidebar ikut scroll */
   font-family: "Poppins", sans-serif;
   box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06);
   transform: translateX(0);
   transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Brand */
+/* ════════════════════════════
+   BRAND
+════════════════════════════ */
 .sb-brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  /* ✅ Spacing atas bawah diperbesar: 20px atas-bawah, 16px kiri-kanan */
   padding: 20px 16px;
   border-bottom: 1px solid var(--sb-border);
-  flex-shrink: 0;
+  flex-shrink: 0; /* ✅ brand tidak ikut menyusut/scroll */
 }
 .sb-logo {
   width: 36px;
@@ -254,6 +278,16 @@ const isActive = (path) => route.path === path;
   width: 36px;
   height: 36px;
 }
+
+/* ✅ Logo gambar dari URL (user.logo_url) */
+.sb-logo-img {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  object-fit: cover;
+  display: block;
+}
+
 .sb-brand-text {
   flex: 1;
   display: flex;
@@ -272,7 +306,6 @@ const isActive = (path) => route.path === path;
 .sb-brand-sub {
   font-size: 10px;
   color: var(--sb-muted);
-  /* ✅ Sedikit jarak antara nama & sub-label */
   margin-top: 2px;
 }
 .sb-close {
@@ -300,19 +333,36 @@ const isActive = (path) => route.path === path;
   height: 16px;
 }
 
-/* Nav */
+/* ════════════════════════════
+   NAV
+   ✅ KUNCI SCROLL TERBATAS:
+   - flex: 1       → ambil sisa ruang di antara brand & footer
+   - min-height: 0 → tanpa ini flexbox TIDAK akan membatasi tinggi,
+                     nav akan melar dan mendorong footer keluar layar
+   - overflow-y: auto → scroll hanya di dalam area nav
+════════════════════════════ */
 .sb-nav {
   flex: 1;
+  min-height: 0; /* ✅ KRITIS */
   overflow-y: auto;
-  /* ✅ Padding atas bawah diperbesar: 20px atas, 8px bawah */
   padding: 20px 12px 8px;
   display: flex;
   flex-direction: column;
-  /* ✅ Gap antar group diperbesar */
   gap: 28px;
   scrollbar-width: thin;
   scrollbar-color: #e5e7eb transparent;
 }
+.sb-nav::-webkit-scrollbar {
+  width: 4px;
+}
+.sb-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sb-nav::-webkit-scrollbar-thumb {
+  background: #e5e7eb;
+  border-radius: 99px;
+}
+
 .sb-group {
   display: flex;
   flex-direction: column;
@@ -325,15 +375,16 @@ const isActive = (path) => route.path === path;
   text-transform: uppercase;
   color: #d1d5db;
   padding: 0 8px;
-  /* ✅ Jarak antara label group dan item navigasi diperbesar */
   margin-bottom: 8px;
 }
 
+/* ════════════════════════════
+   NAV ITEM
+════════════════════════════ */
 .sb-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  /* ✅ Padding atas bawah item diperbesar: 11px */
   padding: 11px 10px;
   border-radius: 10px;
   text-decoration: none;
@@ -399,19 +450,20 @@ const isActive = (path) => route.path === path;
   flex-shrink: 0;
 }
 
-/* Footer */
+/* ════════════════════════════
+   FOOTER
+   ✅ flex-shrink: 0 → footer tidak pernah tersembunyi
+════════════════════════════ */
 .sb-footer {
-  /* ✅ Padding atas bawah footer diperbesar: 20px atas-bawah */
   padding: 20px 16px;
   border-top: 1px solid var(--sb-border);
-  flex-shrink: 0;
+  flex-shrink: 0; /* ✅ KRITIS: footer selalu terlihat di bawah */
 }
 .sb-logout {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  /* ✅ Padding atas bawah tombol logout diperbesar: 11px */
   padding: 11px 12px;
   border-radius: 10px;
   border: 1px solid #fecaca;
@@ -422,7 +474,6 @@ const isActive = (path) => route.path === path;
   font-family: "Poppins", sans-serif;
   cursor: pointer;
   transition: all 0.2s;
-  /* ✅ Jarak antara tombol logout dan versi diperbesar */
   margin-bottom: 12px;
 }
 .sb-logout:hover {
@@ -437,11 +488,12 @@ const isActive = (path) => route.path === path;
   text-align: center;
   font-size: 10px;
   color: #d1d5db;
-  /* ✅ Sedikit padding atas agar tidak terlalu mepet tombol */
   padding-top: 4px;
 }
 
-/* Responsive */
+/* ════════════════════════════
+   RESPONSIVE
+════════════════════════════ */
 @media (max-width: 768px) {
   .sb-root {
     transform: translateX(-100%);

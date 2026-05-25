@@ -1,14 +1,16 @@
 <script setup>
-import { ref, computed } from "vue";
-import { useAuthStore } from "../../stores/auth";
+import { ref, computed, onMounted } from "vue";
 import Sidebar from "../../components/AppSidebar.vue";
 import Navbar from "../../components/AppNavbar.vue";
 import AppFooter from "../../components/AppFooter.vue";
+import api from "../../plugins/axios";
 
-const authStore = useAuthStore();
 const sidebarOpen = ref(false);
 const editMode = ref(false);
 const showSuccessToast = ref(false);
+const loading = ref(true);
+const error = ref(null);
+const saving = ref(false);
 
 const today = new Date().toLocaleDateString("id-ID", {
   weekday: "long",
@@ -17,58 +19,226 @@ const today = new Date().toLocaleDateString("id-ID", {
   year: "numeric",
 });
 
-// ── Profil data (ganti dengan API call) ───────────────────────────────────
+// ── Helper ────────────────────────────────────────────────────────────────
+function normalizeDate(value) {
+  if (!value) return "";
+
+  // Kalau backend kirim format YYYY-MM-DD
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  // Kalau backend kirim format ISO seperti 2024-01-01T00:00:00.000000Z
+  if (typeof value === "string" && value.includes("T")) {
+    return value.split("T")[0];
+  }
+
+  return "";
+}
+
+function cleanText(value) {
+  return typeof value === "string" ? value.trim() : (value ?? "");
+}
+
+function getFirstValidationError(errors) {
+  if (!errors || typeof errors !== "object") {
+    return null;
+  }
+
+  const firstField = Object.values(errors)[0];
+
+  if (Array.isArray(firstField)) {
+    return firstField[0];
+  }
+
+  return null;
+}
+
+// ── State profil & absensi ────────────────────────────────────────────────
 const profile = ref({
-  nama: authStore.user?.name ?? "Ahmad Rafi Pratama",
-  nis: "2024001",
-  kelas: "XII IPA 1",
-  jurusan: "Ilmu Pengetahuan Alam",
-  angkatan: "2022",
-  ttl: "Jakarta, 12 Maret 2007",
-  jenisKelamin: "Laki-laki",
-  agama: "Islam",
-  alamat: "Jl. Mawar No. 10, Tangerang Selatan",
-  noTelp: "0812-3456-7890",
-  email: "ahmadrafi@student.sch.id",
-  namaAyah: "Budi Pratama",
-  namaIbu: "Siti Aminah",
-  noWali: "0821-9876-5432",
+  nama: "",
+  nis: "",
+  kelas: "",
+  jurusan: "",
+  angkatan: "",
+  ttl: "",
+  tempatLahir: "",
+  tanggalLahir: "",
+  jenisKelamin: "",
+  agama: "",
+  alamat: "",
+  noTelp: "",
+  email: "",
+  namaAyah: "",
+  namaIbu: "",
+  noWali: "",
   foto: null,
 });
 
-// Copy untuk edit — reset saat batal
+const statsRingkas = ref([
+  { label: "Kehadiran", value: "-", color: "#16a34a", bg: "#f0fdf4" },
+  { label: "Total Hadir", value: "-", color: "#2563eb", bg: "#eff6ff" },
+  { label: "Izin/Sakit", value: "-", color: "#d97706", bg: "#fffbeb" },
+  { label: "Alfa", value: "-", color: "#dc2626", bg: "#fef2f2" },
+]);
+
 const editData = ref({ ...profile.value });
 
+// ── Fetch dari API ────────────────────────────────────────────────────────
+async function fetchProfile(showLoader = true) {
+  if (showLoader) {
+    loading.value = true;
+  }
+
+  error.value = null;
+
+  try {
+    const { data } = await api.get("/api/profil");
+
+    const p = data?.data?.profil ?? {};
+    const a = data?.data?.absensi ?? {};
+
+    profile.value = {
+      nama: p.nama ?? "",
+      nis: p.nis ?? "",
+      kelas: p.kelas ?? "",
+      jurusan: p.jurusan ?? "",
+      angkatan: p.angkatan ?? "",
+      ttl: p.ttl ?? "",
+
+      tempatLahir: p.tempat_lahir ?? "",
+      tanggalLahir: normalizeDate(p.tanggal_lahir),
+
+      jenisKelamin: p.jenis_kelamin ?? "",
+      agama: p.agama ?? "",
+      alamat: p.alamat ?? "",
+
+      noTelp: p.no_hp ?? p.no_telp ?? "",
+      email: p.email ?? "",
+
+      namaAyah: p.nama_ayah ?? "",
+      namaIbu: p.nama_ibu ?? "",
+      noWali: p.no_wali ?? "",
+
+      foto: p.foto ?? null,
+    };
+
+    statsRingkas.value = [
+      {
+        label: "Kehadiran",
+        value: a.persentase_hadir ?? "-",
+        color: "#16a34a",
+        bg: "#f0fdf4",
+      },
+      {
+        label: "Total Hadir",
+        value: a.total_hadir ?? "-",
+        color: "#2563eb",
+        bg: "#eff6ff",
+      },
+      {
+        label: "Izin/Sakit",
+        value: a.total_izin_sakit ?? "-",
+        color: "#d97706",
+        bg: "#fffbeb",
+      },
+      {
+        label: "Alfa",
+        value: a.total_alfa ?? "-",
+        color: "#dc2626",
+        bg: "#fef2f2",
+      },
+    ];
+  } catch (err) {
+    console.error(err);
+
+    error.value = err.response?.data?.message ?? "Gagal memuat profil. Silakan coba lagi.";
+  } finally {
+    if (showLoader) {
+      loading.value = false;
+    }
+  }
+}
+
+onMounted(() => fetchProfile(true));
+
+// ── Edit / Simpan ─────────────────────────────────────────────────────────
 function startEdit() {
   editData.value = { ...profile.value };
   editMode.value = true;
 }
+
 function cancelEdit() {
+  editData.value = { ...profile.value };
   editMode.value = false;
 }
-function saveEdit() {
-  profile.value = { ...editData.value };
-  editMode.value = false;
-  showSuccessToast.value = true;
-  setTimeout(() => (showSuccessToast.value = false), 3000);
+
+async function saveEdit() {
+  if (saving.value) return;
+
+  saving.value = true;
+
+  try {
+    const payload = {
+      nama: cleanText(editData.value.nama),
+      agama: cleanText(editData.value.agama) || null,
+      tempat_lahir: cleanText(editData.value.tempatLahir) || null,
+      tanggal_lahir: normalizeDate(editData.value.tanggalLahir) || null,
+      alamat: cleanText(editData.value.alamat) || null,
+      no_hp: cleanText(editData.value.noTelp) || null,
+      email: cleanText(editData.value.email),
+      nama_ayah: cleanText(editData.value.namaAyah) || null,
+      nama_ibu: cleanText(editData.value.namaIbu) || null,
+      no_wali: cleanText(editData.value.noWali) || null,
+    };
+
+    await api.put("/api/profil", payload);
+
+    await fetchProfile(false);
+
+    editMode.value = false;
+    showSuccessToast.value = true;
+
+    setTimeout(() => {
+      showSuccessToast.value = false;
+    }, 3000);
+  } catch (err) {
+    console.error(err);
+
+    if (err.response?.status === 422) {
+      const firstError = getFirstValidationError(err.response.data?.errors);
+
+      alert(firstError ?? "Validasi gagal. Periksa kembali data profil.");
+      return;
+    }
+
+    if (err.response?.status === 401) {
+      alert("Sesi login sudah habis. Silakan login ulang.");
+      return;
+    }
+
+    if (err.response?.status === 404) {
+      alert("Data siswa tidak ditemukan untuk akun ini.");
+      return;
+    }
+
+    alert(err.response?.data?.message ?? "Gagal menyimpan perubahan.");
+  } finally {
+    saving.value = false;
+  }
 }
 
 const initials = computed(() => {
+  if (!profile.value.nama) return "??";
+
   return profile.value.nama
     .split(" ")
+    .filter(Boolean)
     .slice(0, 2)
-    .map((w) => w[0])
+    .map((word) => word[0])
     .join("")
     .toUpperCase();
 });
-
-// ── Statistik ringkas ─────────────────────────────────────────────────────
-const statsRingkas = [
-  { label: "Kehadiran", value: "96%", color: "#16a34a", bg: "#f0fdf4" },
-  { label: "Total Hadir", value: "112", color: "#2563eb", bg: "#eff6ff" },
-  { label: "Izin/Sakit", value: "4", color: "#d97706", bg: "#fffbeb" },
-  { label: "Alfa", value: "0", color: "#dc2626", bg: "#fef2f2" },
-];
 </script>
 
 <template>
@@ -86,189 +256,243 @@ const statsRingkas = [
           <span class="dash-date">{{ today }}</span>
         </div>
 
-        <!-- Profile hero card -->
-        <div class="hero-card">
-          <div class="hero-bg"></div>
-          <div class="hero-body">
-            <div class="avatar-wrap">
-              <div class="avatar-circle">{{ initials }}</div>
-              <div class="avatar-status"></div>
-            </div>
-            <div class="hero-info">
-              <h2 class="hero-name">{{ profile.nama }}</h2>
-              <div class="hero-meta-row">
-                <span class="hero-chip">NIS: {{ profile.nis }}</span>
-                <span class="hero-chip">{{ profile.kelas }}</span>
-                <span class="hero-chip">{{ profile.jurusan }}</span>
-              </div>
-            </div>
-            <button v-if="!editMode" class="btn btn-primary" @click="startEdit">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125"
-                />
-              </svg>
-              Edit Profil
-            </button>
-          </div>
-
-          <!-- Stats ringkas -->
-          <div class="stats-row">
-            <div
-              v-for="s in statsRingkas"
-              :key="s.label"
-              class="stat-pill"
-              :style="{ '--c': s.color, '--bg': s.bg }"
-            >
-              <span class="spv">{{ s.value }}</span>
-              <span class="spl">{{ s.label }}</span>
-            </div>
-          </div>
+        <!-- Loading state -->
+        <div v-if="loading" class="loading-wrap">
+          <div class="spinner"></div>
+          <span>Memuat data profil…</span>
         </div>
 
-        <!-- Body grid -->
-        <div class="body-grid">
-          <!-- Data diri -->
-          <div class="info-card">
-            <div class="card-head">
-              <h3 class="card-title">Data Diri</h3>
-            </div>
-            <div class="field-list">
-              <template v-if="!editMode">
-                <div class="field-row">
-                  <span class="fl">Nama Lengkap</span><span class="fv">{{ profile.nama }}</span>
+        <!-- Error state -->
+        <div v-else-if="error" class="error-box">
+          <span>{{ error }}</span>
+          <button class="btn btn-primary" @click="fetchProfile(true)">Coba Lagi</button>
+        </div>
+
+        <template v-else>
+          <!-- Profile hero card -->
+          <div class="hero-card">
+            <div class="hero-bg"></div>
+            <div class="hero-body">
+              <div class="avatar-wrap">
+                <img v-if="profile.foto" :src="profile.foto" class="avatar-img" alt="Foto profil" />
+                <div v-else class="avatar-circle">{{ initials }}</div>
+                <div class="avatar-status"></div>
+              </div>
+              <div class="hero-info">
+                <h2 class="hero-name">{{ profile.nama }}</h2>
+                <div class="hero-meta-row">
+                  <span class="hero-chip">NIS: {{ profile.nis }}</span>
+                  <span class="hero-chip">{{ profile.kelas }}</span>
+                  <span class="hero-chip">{{ profile.jurusan }}</span>
                 </div>
-                <div class="field-row">
-                  <span class="fl">NIS</span><span class="fv">{{ profile.nis }}</span>
-                </div>
-                <div class="field-row">
-                  <span class="fl">Kelas</span><span class="fv">{{ profile.kelas }}</span>
-                </div>
-                <div class="field-row">
-                  <span class="fl">Jurusan</span><span class="fv">{{ profile.jurusan }}</span>
-                </div>
-                <div class="field-row">
-                  <span class="fl">Angkatan</span><span class="fv">{{ profile.angkatan }}</span>
-                </div>
-                <div class="field-row">
-                  <span class="fl">Tempat, Tgl Lahir</span><span class="fv">{{ profile.ttl }}</span>
-                </div>
-                <div class="field-row">
-                  <span class="fl">Jenis Kelamin</span
-                  ><span class="fv">{{ profile.jenisKelamin }}</span>
-                </div>
-                <div class="field-row">
-                  <span class="fl">Agama</span><span class="fv">{{ profile.agama }}</span>
-                </div>
-              </template>
-              <template v-else>
-                <div class="field-row edit">
-                  <label class="fl">Nama Lengkap</label>
-                  <input v-model="editData.nama" class="field-input" />
-                </div>
-                <div class="field-row edit">
-                  <label class="fl">NIS</label>
-                  <input v-model="editData.nis" class="field-input" disabled style="opacity: 0.5" />
-                </div>
-                <div class="field-row edit">
-                  <label class="fl">Kelas</label>
-                  <input
-                    v-model="editData.kelas"
-                    class="field-input"
-                    disabled
-                    style="opacity: 0.5"
+              </div>
+              <button v-if="!editMode" class="btn btn-primary" @click="startEdit">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125"
                   />
-                </div>
-                <div class="field-row edit">
-                  <label class="fl">Tempat, Tgl Lahir</label>
-                  <input v-model="editData.ttl" class="field-input" />
-                </div>
-                <div class="field-row edit">
-                  <label class="fl">Agama</label>
-                  <input v-model="editData.agama" class="field-input" />
-                </div>
-              </template>
+                </svg>
+                Edit Profil
+              </button>
+            </div>
+
+            <!-- Stats absensi dari API -->
+            <div class="stats-row">
+              <div
+                v-for="s in statsRingkas"
+                :key="s.label"
+                class="stat-pill"
+                :style="{ '--c': s.color, '--bg': s.bg }"
+              >
+                <span class="spv">{{ s.value }}</span>
+                <span class="spl">{{ s.label }}</span>
+              </div>
             </div>
           </div>
 
-          <!-- Kontak & Wali -->
-          <div class="right-col">
+          <!-- Body grid -->
+          <div class="body-grid">
+            <!-- Data diri -->
             <div class="info-card">
-              <div class="card-head"><h3 class="card-title">Kontak</h3></div>
+              <div class="card-head"><h3 class="card-title">Data Diri</h3></div>
               <div class="field-list">
                 <template v-if="!editMode">
                   <div class="field-row">
-                    <span class="fl">Alamat</span><span class="fv">{{ profile.alamat }}</span>
+                    <span class="fl">Nama Lengkap</span><span class="fv">{{ profile.nama }}</span>
                   </div>
                   <div class="field-row">
-                    <span class="fl">No. Telepon</span><span class="fv">{{ profile.noTelp }}</span>
+                    <span class="fl">NIS</span><span class="fv">{{ profile.nis }}</span>
                   </div>
                   <div class="field-row">
-                    <span class="fl">Email</span><span class="fv link">{{ profile.email }}</span>
+                    <span class="fl">Kelas</span><span class="fv">{{ profile.kelas }}</span>
+                  </div>
+                  <div class="field-row">
+                    <span class="fl">Jurusan</span><span class="fv">{{ profile.jurusan }}</span>
+                  </div>
+                  <div class="field-row">
+                    <span class="fl">Angkatan</span><span class="fv">{{ profile.angkatan }}</span>
+                  </div>
+                  <div class="field-row">
+                    <span class="fl">Tempat, Tgl Lahir</span
+                    ><span class="fv">{{ profile.ttl }}</span>
+                  </div>
+                  <div class="field-row">
+                    <span class="fl">Jenis Kelamin</span
+                    ><span class="fv">{{ profile.jenisKelamin }}</span>
+                  </div>
+                  <div class="field-row">
+                    <span class="fl">Agama</span><span class="fv">{{ profile.agama }}</span>
                   </div>
                 </template>
+
                 <template v-else>
                   <div class="field-row edit">
-                    <label class="fl">Alamat</label
-                    ><input v-model="editData.alamat" class="field-input" />
+                    <label class="fl">Nama Lengkap</label>
+                    <input v-model="editData.nama" class="field-input" />
                   </div>
                   <div class="field-row edit">
-                    <label class="fl">No. Telepon</label
-                    ><input v-model="editData.noTelp" class="field-input" />
+                    <label class="fl">NIS</label>
+                    <input
+                      v-model="editData.nis"
+                      class="field-input"
+                      disabled
+                      style="opacity: 0.5"
+                    />
                   </div>
                   <div class="field-row edit">
-                    <label class="fl">Email</label
-                    ><input v-model="editData.email" class="field-input" />
+                    <label class="fl">Kelas</label>
+                    <input
+                      v-model="editData.kelas"
+                      class="field-input"
+                      disabled
+                      style="opacity: 0.5"
+                    />
+                  </div>
+                  <div class="field-row edit">
+                    <label class="fl">Tempat Lahir</label>
+                    <input
+                      v-model="editData.tempatLahir"
+                      class="field-input"
+                      placeholder="Contoh: Jakarta"
+                    />
+                  </div>
+                  <div class="field-row edit">
+                    <label class="fl">Tanggal Lahir</label>
+                    <input v-model="editData.tanggalLahir" type="date" class="field-input" />
+                  </div>
+                  <div class="field-row edit">
+                    <label class="fl">Agama</label>
+                    <input v-model="editData.agama" class="field-input" />
                   </div>
                 </template>
               </div>
             </div>
 
-            <div class="info-card">
-              <div class="card-head"><h3 class="card-title">Data Orang Tua / Wali</h3></div>
-              <div class="field-list">
-                <template v-if="!editMode">
-                  <div class="field-row">
-                    <span class="fl">Nama Ayah</span><span class="fv">{{ profile.namaAyah }}</span>
-                  </div>
-                  <div class="field-row">
-                    <span class="fl">Nama Ibu</span><span class="fv">{{ profile.namaIbu }}</span>
-                  </div>
-                  <div class="field-row">
-                    <span class="fl">No. Wali</span><span class="fv">{{ profile.noWali }}</span>
-                  </div>
-                </template>
-                <template v-else>
-                  <div class="field-row edit">
-                    <label class="fl">Nama Ayah</label
-                    ><input v-model="editData.namaAyah" class="field-input" />
-                  </div>
-                  <div class="field-row edit">
-                    <label class="fl">Nama Ibu</label
-                    ><input v-model="editData.namaIbu" class="field-input" />
-                  </div>
-                  <div class="field-row edit">
-                    <label class="fl">No. Wali</label
-                    ><input v-model="editData.noWali" class="field-input" />
-                  </div>
-                </template>
+            <!-- Kontak & Wali -->
+            <div class="right-col">
+              <div class="info-card">
+                <div class="card-head"><h3 class="card-title">Kontak</h3></div>
+                <div class="field-list">
+                  <template v-if="!editMode">
+                    <div class="field-row">
+                      <span class="fl">Alamat</span><span class="fv">{{ profile.alamat }}</span>
+                    </div>
+                    <div class="field-row">
+                      <span class="fl">No. Telepon</span
+                      ><span class="fv">{{ profile.noTelp }}</span>
+                    </div>
+                    <div class="field-row">
+                      <span class="fl">Email</span><span class="fv link">{{ profile.email }}</span>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div class="field-row edit">
+                      <label class="fl">Alamat</label
+                      ><input v-model="editData.alamat" class="field-input" />
+                    </div>
+                    <div class="field-row edit">
+                      <label class="fl">No. Telepon</label
+                      ><input v-model="editData.noTelp" class="field-input" />
+                    </div>
+                    <div class="field-row edit">
+                      <label class="fl">Email</label
+                      ><input v-model="editData.email" class="field-input" />
+                    </div>
+                  </template>
+                </div>
+              </div>
+
+              <div class="info-card">
+                <div class="card-head"><h3 class="card-title">Data Orang Tua / Wali</h3></div>
+                <div class="field-list">
+                  <template v-if="!editMode">
+                    <div class="field-row">
+                      <span class="fl">Nama Ayah</span
+                      ><span class="fv">{{ profile.namaAyah }}</span>
+                    </div>
+                    <div class="field-row">
+                      <span class="fl">Nama Ibu</span><span class="fv">{{ profile.namaIbu }}</span>
+                    </div>
+                    <div class="field-row">
+                      <span class="fl">No. Wali</span><span class="fv">{{ profile.noWali }}</span>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div class="field-row edit">
+                      <label class="fl">Nama Ayah</label
+                      ><input v-model="editData.namaAyah" class="field-input" />
+                    </div>
+                    <div class="field-row edit">
+                      <label class="fl">Nama Ibu</label
+                      ><input v-model="editData.namaIbu" class="field-input" />
+                    </div>
+                    <div class="field-row edit">
+                      <label class="fl">No. Wali</label
+                      ><input v-model="editData.noWali" class="field-input" />
+                    </div>
+                  </template>
+                </div>
+              </div>
+
+              <div v-if="editMode" class="edit-actions">
+                <button class="btn btn-ghost" :disabled="saving" @click="cancelEdit">Batal</button>
+                <button class="btn btn-primary" :disabled="saving" @click="saveEdit">
+                  <svg
+                    v-if="saving"
+                    class="btn-spinner"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                  >
+                    <path stroke-linecap="round" d="M12 2a10 10 0 0 1 10 10" />
+                  </svg>
+                  <svg
+                    v-else
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  {{ saving ? "Menyimpan…" : "Simpan Perubahan" }}
+                </button>
               </div>
             </div>
-
-            <!-- Tombol save/cancel -->
-            <div v-if="editMode" class="edit-actions">
-              <button class="btn btn-ghost" @click="cancelEdit">Batal</button>
-              <button class="btn btn-primary" @click="saveEdit">Simpan Perubahan</button>
-            </div>
           </div>
-        </div>
+        </template>
       </main>
       <AppFooter />
     </div>
 
-    <!-- Toast notifikasi -->
+    <!-- Toast -->
     <Transition name="toast">
       <div v-if="showSuccessToast" class="toast">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -285,6 +509,14 @@ const statsRingkas = [
 </template>
 
 <style scoped>
+.btn-spinner {
+  animation: spin 0.7s linear infinite;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 .layout-root {
   display: flex;
   min-height: 100vh;
@@ -305,6 +537,43 @@ const statsRingkas = [
   gap: 20px;
 }
 
+/* ── Loading / Error ─────────────────────────────────────────────────────── */
+.loading-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+  padding: 60px;
+  color: #6b7280;
+  font-size: 14px;
+}
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #bbf7d0;
+  border-top-color: #16a34a;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.error-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+  padding: 24px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  color: #dc2626;
+  font-size: 13px;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
 .dash-header {
   display: flex;
   align-items: flex-start;
@@ -333,7 +602,7 @@ const statsRingkas = [
   white-space: nowrap;
 }
 
-/* Hero card */
+/* ── Hero ────────────────────────────────────────────────────────────────── */
 .hero-card {
   background: white;
   border: 1px solid #e5e7eb;
@@ -367,6 +636,14 @@ const statsRingkas = [
   font-size: 22px;
   font-weight: 800;
   color: white;
+  border: 4px solid white;
+  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.25);
+}
+.avatar-img {
+  width: 76px;
+  height: 76px;
+  border-radius: 18px;
+  object-fit: cover;
   border: 4px solid white;
   box-shadow: 0 4px 12px rgba(22, 163, 74, 0.25);
 }
@@ -405,6 +682,7 @@ const statsRingkas = [
   border: 1px solid #bbf7d0;
 }
 
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -438,9 +716,9 @@ const statsRingkas = [
   background: #e5e7eb;
 }
 
+/* ── Stats ───────────────────────────────────────────────────────────────── */
 .stats-row {
   display: flex;
-  gap: 0;
   border-top: 1px solid #f3f4f6;
 }
 .stat-pill {
@@ -465,7 +743,7 @@ const statsRingkas = [
   margin-top: 2px;
 }
 
-/* Body grid */
+/* ── Body grid ───────────────────────────────────────────────────────────── */
 .body-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -541,14 +819,13 @@ const statsRingkas = [
 .field-input:focus {
   border-color: #16a34a;
 }
-
 .edit-actions {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
 }
 
-/* Toast */
+/* ── Toast ───────────────────────────────────────────────────────────────── */
 .toast {
   position: fixed;
   bottom: 28px;
@@ -582,6 +859,7 @@ const statsRingkas = [
   transform: translateY(16px);
 }
 
+/* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .body-grid {
     grid-template-columns: 1fr;

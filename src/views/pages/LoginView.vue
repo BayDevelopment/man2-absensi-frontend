@@ -28,9 +28,32 @@ const router = useRouter();
 const pengaturan = ref(null);
 
 // ✅ FIX: fallback null bukan string — supaya v-else-if bisa bedakan "belum ada data" vs "data kosong"
-const namaSekolah = computed(() => pengaturan.value?.nama_sekolah ?? null);
-const subSekolah = computed(() => pengaturan.value?.alamat ?? null);
-const logoSekolah = computed(() => pengaturan.value?.logo ?? null);
+const namaSekolah = computed(() => {
+  const nama = pengaturan.value?.nama_sekolah;
+
+  return typeof nama === "string" && nama.trim() ? nama.trim() : null;
+});
+
+const subSekolah = computed(() => {
+  const alamat = pengaturan.value?.alamat;
+
+  return typeof alamat === "string" && alamat.trim() ? alamat.trim() : null;
+});
+
+const logoSekolah = computed(() => {
+  const logo = pengaturan.value?.logo;
+
+  if (!logo || typeof logo !== "string") {
+    return null;
+  }
+
+  const value = logo.trim();
+
+  const isSafe =
+    value.startsWith("/") || value.startsWith("http://") || value.startsWith("https://");
+
+  return isSafe ? value : null;
+});
 
 // ---------------------------
 // SweetAlert2 Toast Config
@@ -98,7 +121,7 @@ const handleLogin = async () => {
 
   try {
     const data = await authStore.login(nisn.value, password.value, rememberMe.value);
-    const user = data.data.user;
+    const user = data.data?.user;
     const roles = user?.roles ?? [];
 
     if (!roles.includes("siswa")) {
@@ -108,7 +131,7 @@ const handleLogin = async () => {
     }
 
     showToast("success", "Login berhasil!");
-    router.push("/dashboard");
+    router.replace("/dashboard");
   } catch (err) {
     const status = err.response?.status;
     const message = err.response?.data?.message;
@@ -532,11 +555,7 @@ const handleKeydown = (e) => {
             <!-- Remember & Forgot -->
             <div class="login-remember-row">
               <label class="login-remember-label">
-                <div
-                  class="login-check-box"
-                  :class="{ checked: rememberMe }"
-                  @click="rememberMe = !rememberMe"
-                >
+                <span class="login-check-box" :class="{ checked: rememberMe }">
                   <svg
                     v-if="rememberMe"
                     viewBox="0 0 24 24"
@@ -546,11 +565,17 @@ const handleKeydown = (e) => {
                   >
                     <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
-                </div>
+                </span>
                 <input v-model="rememberMe" type="checkbox" class="sr-only" />
                 <span>Ingat saya</span>
               </label>
-              <a href="#" class="login-forgot-link">Lupa kata sandi?</a>
+              <button
+                type="button"
+                class="login-forgot-link"
+                @click="showToast('info', 'Silakan hubungi admin sekolah.')"
+              >
+                Lupa kata sandi?
+              </button>
             </div>
 
             <!-- Global error -->

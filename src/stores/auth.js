@@ -1,12 +1,12 @@
 // src/stores/auth.js
 import { defineStore } from "pinia";
-import api from "../plugins/axios";
+import api, { setAuthToken, clearAuthToken, getToken } from "../plugins/axios";
 
 export const useAuthStore = defineStore("auth", {
   state: () => ({
-    user: JSON.parse(sessionStorage.getItem("user")) || null,
+    user: null,
     justLoggedOut: false,
-    isReady: false, // ← tambah: flag auth sudah selesai dicek
+    isReady: false,
     _fetchMePromise: null,
   }),
 
@@ -16,87 +16,104 @@ export const useAuthStore = defineStore("auth", {
     userName: (state) => state.user?.name ?? "",
     userNisn: (state) => state.user?.nisn ?? "",
     userKelas: (state) => state.user?.kelas ?? "",
+    token: () => getToken(),
   },
 
   actions: {
-    // ---------------------------
-    // POST /api/login
-    // ---------------------------
     async login(nisn, password, remember = false) {
-      const { data } = await api.post("/api/login", { nisn, password, remember });
+      const { data } = await api.post("/api/login", {
+        nisn,
+        password,
+        remember,
+      });
 
-      if (!data.data?.user?.roles?.includes("siswa")) {
+      const token = data.data?.token;
+      const user = data.data?.user;
+
+      if (!token || !user) {
+        throw new Error("Login gagal. Data pengguna tidak valid.");
+      }
+
+      if (!user.roles?.includes("siswa")) {
         throw new Error("Akses ditolak. Gunakan halaman admin.");
       }
 
-      const token = data.data.token;
-      const user = data.data.user;
-
       if (remember) {
         localStorage.setItem("token", token);
+        sessionStorage.removeItem("token");
       } else {
         sessionStorage.setItem("token", token);
+        localStorage.removeItem("token");
       }
 
-      api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+      setAuthToken(token);
 
       this.user = user;
+      this.justLoggedOut = false;
       this.isReady = true;
+
       sessionStorage.setItem("user", JSON.stringify(user));
 
       return data;
     },
 
-    // ---------------------------
-    // POST /api/logout
-    // ---------------------------
     async logout() {
       try {
-        await api.post("/api/logout");
+        if (this.token) {
+          await api.post("/api/logout");
+        }
       } catch (e) {
         console.warn("Logout gagal:", e);
       } finally {
         this._clearSession();
         this.justLoggedOut = true;
-        this.isReady = true; // ← tetap ready setelah logout
+        this.isReady = true;
       }
     },
 
-    // ---------------------------
-    // GET /api/me — debounced
-    // ---------------------------
     fetchMe() {
       if (!this._fetchMePromise) {
         this._fetchMePromise = this._doFetchMe().finally(() => {
           this._fetchMePromise = null;
         });
       }
+
       return this._fetchMePromise;
     },
 
     async _doFetchMe() {
+      const token = this.token;
+
+      if (!token) {
+        this._clearSession();
+        this.isReady = true;
+        return false;
+      }
+
+      setAuthToken(token);
+
       try {
         const { data } = await api.get("/api/me");
 
-        if (!data.data?.user?.roles?.includes("siswa")) {
+        const user = data.data?.user;
+
+        if (!user || !user.roles?.includes("siswa")) {
           this._clearSession();
           return false;
         }
 
-        this.user = data.data.user;
-        sessionStorage.setItem("user", JSON.stringify(this.user));
+        this.user = user;
+        sessionStorage.setItem("user", JSON.stringify(user));
+
         return true;
-      } catch {
+      } catch (e) {
         this._clearSession();
         return false;
       } finally {
-        this.isReady = true; // ← selalu set true setelah fetchMe selesai
+        this.isReady = true;
       }
     },
 
-    // ---------------------------
-    // GET /api/login → data sekolah
-    // ---------------------------
     async fetchPengaturan() {
       try {
         const { data } = await api.get("/api/login");
@@ -106,15 +123,17 @@ export const useAuthStore = defineStore("auth", {
       }
     },
 
-    // ---------------------------
-    // Helper: bersihkan session
-    // ---------------------------
     _clearSession() {
       this.user = null;
+      this.justLoggedOut = false;
+
       localStorage.removeItem("token");
       sessionStorage.removeItem("token");
+
+      localStorage.removeItem("user");
       sessionStorage.removeItem("user");
-      delete api.defaults.headers.common["Authorization"];
+
+      clearAuthToken();
     },
   },
 });

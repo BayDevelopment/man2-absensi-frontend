@@ -6,7 +6,43 @@ import Sidebar from "../../components/AppSidebar.vue";
 import Navbar from "../../components/AppNavbar.vue";
 import AppFooter from "../../components/AppFooter.vue";
 import Swal from "sweetalert2";
+import FaceVerificationModal from "../../components/absensi/FaceVerificationModal.vue";
+const showFaceModal = ref(false);
+const pendingFaceRecord = ref(null);
 
+function base64ToFile(base64, filename = "face-verification.jpg") {
+  if (!base64 || typeof base64 !== "string" || !base64.startsWith("data:image/")) {
+    throw new Error("Format foto wajah tidak valid.");
+  }
+
+  const arr = base64.split(",");
+  if (arr.length !== 2) {
+    throw new Error("Format foto wajah tidak valid.");
+  }
+
+  const mime = arr[0].match(/:(.*?);/)?.[1] || "image/jpeg";
+  const allowedMime = ["image/jpeg", "image/jpg", "image/png"];
+
+  if (!allowedMime.includes(mime)) {
+    throw new Error("Format foto wajah harus JPG atau PNG.");
+  }
+
+  const bstr = atob(arr[1]);
+  const maxBytes = 2 * 1024 * 1024; // harus selaras dengan validasi Laravel max:2048
+
+  if (bstr.length > maxBytes) {
+    throw new Error("Ukuran foto wajah maksimal 2 MB.");
+  }
+
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+
+  return new File([u8arr], filename, { type: mime });
+}
 // ============================================================================
 // TOAST & ALERT HELPERS
 // ============================================================================
@@ -42,6 +78,8 @@ function showAbsensiAlert(error) {
       "warning",
       "Data wajah belum terdaftar. Silakan hubungi guru atau operator.",
     ],
+    face_image_required: ["warning", "Foto wajah wajib dikirim sebagai bukti absensi."],
+    invalid_face_descriptor: ["warning", "Data wajah tidak valid. Silakan ulangi scan wajah."],
     attendance_not_open: ["info", "Absensi belum dibuka."],
     subject_finished: ["warning", "Mapel sudah selesai. Anda tidak bisa absen masuk."],
     already_absen: ["warning", "Anda sudah memiliki catatan di jadwal ini."],
@@ -701,24 +739,132 @@ const todayAttendanceInfo = computed(() => {
 // ============================================================================
 // AKSI ABSEN
 // ============================================================================
+function isValidFaceDescriptor(descriptor) {
+  return (
+    Array.isArray(descriptor) &&
+    descriptor.length === 128 &&
+    descriptor.every((value) => Number.isFinite(Number(value)))
+  );
+}
+
 async function absenMasuk(record) {
   if (!record?.jadwal_id) {
     showToast("warning", "Jadwal tidak ditemukan.");
     return;
   }
+
+  if (loadingActionKey.value) {
+    return;
+  }
+
+  if (record.faceRequired) {
+    pendingFaceRecord.value = record;
+    showFaceModal.value = true;
+    return;
+  }
+
+  await submitAbsenMasuk(record);
+}
+
+async function submitAbsenMasuk(record, facePayload = null) {
+  if (!record?.jadwal_id) {
+    showToast("warning", "Jadwal tidak ditemukan.");
+    return;
+  }
+
+  if (loadingActionKey.value) {
+    return;
+  }
+
   try {
     loadingActionKey.value = recordKey(record);
-    const res = await api.post(`${ABSENSI_API}/masuk`, {
-      jadwal_id: record.jadwal_id,
-      kelas_id: record.kelas_id,
-    });
+
+    if (record.faceRequired) {
+      if (!isValidFaceDescriptor(facePayload?.descriptor)) {
+        showToast("warning", "Data wajah tidak valid. Silakan ulangi scan wajah.");
+        return;
+      }
+
+      if (!facePayload?.photoBase64) {
+        showToast("warning", "Foto wajah wajib dikirim sebagai bukti absensi.");
+        return;
+      }
+    }
+
+    const formData = new FormData();
+    formData.append("jadwal_id", record.jadwal_id);
+
+    if (isValidFaceDescriptor(facePayload?.descriptor)) {
+      facePayload.descriptor.forEach((value, index) => {
+        formData.append(`face_descriptor[${index}]`, Number(value));
+      });
+    }
+
+    if (facePayload?.photoBase64) {
+      const faceFile = base64ToFile(facePayload.photoBase64);
+      formData.append("face_image", faceFile);
+    }
+
+    // Jangan kirim siswa_id atau kelas_id dari frontend.
+    // Backend wajib mengambil siswa dan kelas dari user yang sedang login.
+    const res = await api.post(`${ABSENSI_API}/masuk`, formData);
+
     showToast("success", res.data.message || "Absen masuk berhasil.");
     await fetchAbsensi();
   } catch (error) {
+    if (error instanceof Error && !error.response) {
+      showToast("error", error.message || "Gagal memproses data wajah.");
+      return;
+    }
+
     showAbsensiAlert(error);
   } finally {
     loadingActionKey.value = null;
+    pendingFaceRecord.value = null;
+    showFaceModal.value = false;
   }
+}
+
+async function handleFaceVerified(descriptor, photoBase64) {
+  const record = pendingFaceRecord.value;
+
+  if (!record) {
+    showToast("warning", "Data jadwal absen tidak ditemukan.");
+    return;
+  }
+
+  if (!isValidFaceDescriptor(descriptor)) {
+    showToast("warning", "Data wajah tidak valid. Silakan ulangi scan wajah.");
+    return;
+  }
+
+  await submitAbsenMasuk(record, {
+    descriptor,
+    photoBase64,
+  });
+}
+
+function handleFaceModalClose() {
+  showFaceModal.value = false;
+  pendingFaceRecord.value = null;
+}
+
+function handleFaceSkip() {
+  const record = pendingFaceRecord.value;
+  showFaceModal.value = false;
+
+  if (!record) {
+    showToast("warning", "Data jadwal absen tidak ditemukan.");
+    return;
+  }
+
+  if (record.faceRequired) {
+    showToast("warning", "Verifikasi wajah wajib dilakukan untuk absen masuk.");
+    pendingFaceRecord.value = null;
+    return;
+  }
+
+  submitAbsenMasuk(record);
 }
 
 async function absenKeluar(record) {
@@ -1654,6 +1800,21 @@ async function submitIzin() {
       </div>
     </Transition>
   </div>
+
+  <FaceVerificationModal
+    :show="showFaceModal"
+    :face-required="pendingFaceRecord?.faceRequired ?? true"
+    :jadwal-info="{
+      matpel: pendingFaceRecord?.matpel,
+      guru: pendingFaceRecord?.guru,
+      kelas: pendingFaceRecord?.kelas,
+      jam_mulai: pendingFaceRecord?.jamJadwalMulai,
+      jam_selesai: pendingFaceRecord?.jamJadwalSelesai,
+    }"
+    @verified="handleFaceVerified"
+    @skip="handleFaceSkip"
+    @close="handleFaceModalClose"
+  />
 </template>
 
 <style scoped>

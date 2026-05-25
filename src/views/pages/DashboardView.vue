@@ -15,11 +15,24 @@ const router = useRouter();
 const sidebarOpen = ref(false);
 
 // ============================================================================
+// NOTIFICATION SETTING
+// ============================================================================
+const notifSetting = ref({
+  kehadiran: true,
+  pengumuman: true,
+  jadwal: false,
+});
+
+const showKehadiran = computed(() => notifSetting.value.kehadiran);
+const showPengumuman = computed(() => notifSetting.value.pengumuman);
+const showJadwal = computed(() => notifSetting.value.jadwal);
+
+// ============================================================================
 // 1. WAKTU, JAM & GREETING
 // ============================================================================
 const waktuSekarang = ref(new Date());
 let timerJam = null;
-let timerFetch = null;
+let timerFetch = null; // sekarang pakai setTimeout (reschedule), bukan setInterval
 
 const todayStr = computed(() =>
   waktuSekarang.value.toLocaleDateString("id-ID", {
@@ -47,7 +60,8 @@ const jamSekarang = computed(() => {
 // ============================================================================
 // 2. LOADING STATE, ERROR STATE & DATA MENTAH
 // ============================================================================
-const isLoading = ref({ summary: true, jadwal: true, pengumuman: true });
+// Tambah flag 'settings' agar template tidak flicker saat notifSetting belum siap
+const isLoading = ref({ summary: true, jadwal: true, pengumuman: true, settings: true });
 const errorMsg = ref(null);
 const isError = ref(false);
 
@@ -56,8 +70,9 @@ const jadwalHariIni = ref([]);
 const pengumuman = ref([]);
 const namaSiswa = ref("");
 
-// FIX #3: pakai ref agar reaktif dan aman saat dipanggil bersamaan
-const abortController = ref(null);
+// Pisah abort controller agar settings & dashboard bisa di-abort sendiri-sendiri
+const abortDashboard = ref(null);
+const abortSettings = ref(null);
 
 // ============================================================================
 // 3. HELPER WAKTU
@@ -270,7 +285,6 @@ const goToAbsen = (jadwal) => {
   if (jadwal.absenDisabled) return;
   if (jadwal.isGuru) return;
 
-  // FIX #1: pakai || bukan && — cukup salah satu false sudah harus redirect
   if (!authStore.isLoggedIn) {
     router.push({ path: "/login", query: { redirect: "/absensi" } });
     return;
@@ -286,20 +300,47 @@ const goToAbsen = (jadwal) => {
 };
 
 // ============================================================================
-// 9. FETCH DATA DASHBOARD
+// 9. FETCH NOTIFICATION SETTING
+// — Sekarang support AbortController agar tidak leak saat unmount
+// ============================================================================
+const fetchNotificationSetting = async () => {
+  if (abortSettings.value) abortSettings.value.abort();
+  abortSettings.value = new AbortController();
+
+  try {
+    const { data } = await api.get("/api/settings", {
+      signal: abortSettings.value.signal,
+    });
+    const n = data.data?.notifikasi ?? {};
+    notifSetting.value = {
+      kehadiran: n.kehadiran ?? true,
+      pengumuman: n.pengumuman ?? true,
+      jadwal: n.jadwal ?? false,
+    };
+  } catch (err) {
+    if (err.name === "CanceledError") return;
+    console.error("[Dashboard] Gagal fetch setting notifikasi:", err);
+    // fallback aman, tidak ubah state yang sudah ada jika pernah berhasil sebelumnya
+    notifSetting.value = { kehadiran: true, pengumuman: true, jadwal: false };
+  } finally {
+    isLoading.value.settings = false;
+  }
+};
+
+// ============================================================================
+// 10. FETCH DATA DASHBOARD
 // ============================================================================
 const fetchDashboard = async () => {
-  // FIX #3: abort via ref, lebih aman saat dipanggil bersamaan
-  if (abortController.value) abortController.value.abort();
-  abortController.value = new AbortController();
+  if (abortDashboard.value) abortDashboard.value.abort();
+  abortDashboard.value = new AbortController();
 
   errorMsg.value = null;
   isError.value = false;
-  isLoading.value = { summary: true, jadwal: true, pengumuman: true };
+  isLoading.value = { ...isLoading.value, summary: true, jadwal: true, pengumuman: true };
 
   try {
     const { data } = await api.get("/api/dashboard", {
-      signal: abortController.value.signal,
+      signal: abortDashboard.value.signal,
     });
 
     summary.value = data.summary ?? null;
@@ -311,8 +352,6 @@ const fetchDashboard = async () => {
 
     console.error("[Dashboard] Gagal fetch data:", err);
     isError.value = true;
-
-    // FIX #4: fallback namaSiswa dari store saat error
     namaSiswa.value = authStore.user?.name || "Siswa";
 
     if (err.response?.status === 401) {
@@ -326,31 +365,47 @@ const fetchDashboard = async () => {
       errorMsg.value = "Gagal memuat data. Silakan coba lagi.";
     }
   } finally {
-    isLoading.value = { summary: false, jadwal: false, pengumuman: false };
+    isLoading.value = { ...isLoading.value, summary: false, jadwal: false, pengumuman: false };
   }
 };
 
 // ============================================================================
-// 10. LIFECYCLE
+// 11. FETCH GABUNGAN — jalankan settings & dashboard secara paralel
 // ============================================================================
-onMounted(() => {
-  fetchDashboard();
+const fetchAll = () => Promise.all([fetchNotificationSetting(), fetchDashboard()]);
 
-  // FIX #2: 60 detik cukup karena satuan terkecil status absen adalah menit
+// ============================================================================
+// 12. RESCHEDULE — fetch selesai dulu, baru jadwalkan berikutnya
+// Mencegah overlap fetch ketika koneksi lambat
+// ============================================================================
+const scheduleNext = () => {
+  timerFetch = setTimeout(async () => {
+    await fetchAll();
+    scheduleNext();
+  }, 5 * 60_000);
+};
+
+// ============================================================================
+// 13. LIFECYCLE
+// ============================================================================
+onMounted(async () => {
+  // Jam tetap jalan sejak awal, tidak perlu tunggu fetch
   timerJam = setInterval(() => {
     waktuSekarang.value = new Date();
   }, 60_000);
 
-  // Re-fetch data dari server tiap 5 menit
-  timerFetch = setInterval(() => {
-    fetchDashboard();
-  }, 5 * 60_000);
+  // Fetch pertama: settings & dashboard selesai dulu sebelum render data
+  await fetchAll();
+
+  // Baru mulai siklus refresh berikutnya setelah fetch pertama selesai
+  scheduleNext();
 });
 
 onUnmounted(() => {
   if (timerJam) clearInterval(timerJam);
-  if (timerFetch) clearInterval(timerFetch);
-  if (abortController.value) abortController.value.abort();
+  if (timerFetch) clearTimeout(timerFetch); // clearTimeout karena pakai setTimeout
+  abortDashboard.value?.abort();
+  abortSettings.value?.abort();
 });
 </script>
 
@@ -364,19 +419,14 @@ onUnmounted(() => {
       <main class="layout-content">
         <div class="hero-card">
           <!-- ── SKELETON STATE ── -->
-          <template v-if="isLoading.jadwal">
+          <template v-if="isLoading.jadwal || isLoading.settings">
             <div class="hero-left">
-              <!-- greeting placeholder -->
               <div class="skeleton hero-sk-greeting" />
-              <!-- nama placeholder -->
               <div class="skeleton hero-sk-name" />
-              <!-- tanggal placeholder -->
               <div class="skeleton hero-sk-date" />
-              <!-- badge placeholder -->
               <div class="skeleton hero-sk-badge" />
             </div>
 
-            <!-- ilustrasi kanan: lingkaran besar beranimasi -->
             <div class="hero-illustration hero-sk-illustration" aria-hidden="true">
               <div class="ill-circle ill-c1" />
               <div class="ill-circle ill-c2" />
@@ -503,8 +553,8 @@ onUnmounted(() => {
           </template>
         </div>
 
-        <div class="stats-row">
-          <template v-if="isLoading.summary">
+        <div v-if="showKehadiran" class="stats-row">
+          <template v-if="isLoading.summary || isLoading.settings">
             <div v-for="i in 4" :key="i" class="stat-card skeleton-card">
               <div class="skeleton sk-ico" />
               <div class="skeleton sk-num" />
@@ -573,8 +623,8 @@ onUnmounted(() => {
           </template>
         </div>
 
-        <div class="bottom-grid">
-          <div class="card jadwal-card">
+        <div class="bottom-grid" :class="{ 'single-column': !showJadwal }">
+          <div v-if="showJadwal" class="card jadwal-card">
             <div class="card-header">
               <div class="card-title-wrap">
                 <span class="card-title-icon">📚</span>
@@ -583,7 +633,7 @@ onUnmounted(() => {
               <router-link to="/jadwal" class="card-link">Lihat semua →</router-link>
             </div>
 
-            <template v-if="isLoading.jadwal">
+            <template v-if="isLoading.jadwal || isLoading.settings">
               <div class="jadwal-list">
                 <div v-for="i in 4" :key="i" class="jadwal-item">
                   <div class="jadwal-dot-wrap">
@@ -672,7 +722,7 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <template v-if="isLoading.summary">
+              <template v-if="isLoading.summary || isLoading.settings">
                 <div class="rekap-list">
                   <div v-for="i in 3" :key="i" class="rekap-item">
                     <div class="skeleton sk-rekap-label" />
@@ -771,7 +821,7 @@ onUnmounted(() => {
               </template>
             </div>
 
-            <div class="card">
+            <div v-if="showPengumuman" class="card">
               <div class="card-header">
                 <div class="card-title-wrap">
                   <span class="card-title-icon">📢</span>
@@ -780,7 +830,7 @@ onUnmounted(() => {
               </div>
 
               <!-- SKELETON -->
-              <template v-if="isLoading.pengumuman">
+              <template v-if="isLoading.pengumuman || isLoading.settings">
                 <div class="pengumuman-list">
                   <div v-for="i in 2" :key="i" class="skeleton sk-pengumuman" />
                 </div>
@@ -808,7 +858,6 @@ onUnmounted(() => {
                     </div>
 
                     <div class="peng-content">
-                      <!-- Judul + tanggal published_at -->
                       <div class="peng-head">
                         <p class="peng-judul" :style="{ color: p.warna }">{{ p.judul }}</p>
                         <span v-if="p.tanggalFormatted" class="peng-date">{{
@@ -816,7 +865,6 @@ onUnmounted(() => {
                         }}</span>
                       </div>
 
-                      <!-- Isi dengan expand/collapse -->
                       <div
                         v-if="p.isi"
                         class="peng-isi"
@@ -834,7 +882,6 @@ onUnmounted(() => {
                         {{ isExpanded(p.id ?? i) ? "Lihat sedikit ▲" : "Lihat selengkapnya ▼" }}
                       </button>
 
-                      <!-- Footer: dibuat_oleh + expired_at -->
                       <div v-if="p.dibuat_oleh || p.expiredFormatted" class="peng-footer">
                         <span v-if="p.dibuat_oleh" class="peng-chip"> ✍️ {{ p.dibuat_oleh }} </span>
                         <span v-if="p.expiredFormatted" class="peng-chip peng-chip-expired">
@@ -856,9 +903,10 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* ============================================================================
-   FONT & ROOT
-============================================================================ */
+/* font dan root */
+.bottom-grid.single-column {
+  grid-template-columns: 1fr;
+}
 .absen-dot-istirahat {
   background: #f59e0b;
   box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12);
