@@ -9,7 +9,7 @@ const api = axios.create({
 });
 
 export function getToken() {
-  return localStorage.getItem("token") || sessionStorage.getItem("token");
+  return sessionStorage.getItem("token");
 }
 
 export function setAuthToken(token) {
@@ -22,11 +22,14 @@ export function clearAuthToken() {
   delete api.defaults.headers.common["Authorization"];
 }
 
-const token = getToken();
-
-if (token) {
-  setAuthToken(token);
-}
+// ✅ INI YANG PERLU DITAMBAH — token dibaca fresh setiap request
+api.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers["Authorization"] = `Bearer ${token}`;
+  }
+  return config;
+});
 
 api.interceptors.response.use(
   (response) => response,
@@ -42,7 +45,6 @@ api.interceptors.response.use(
         window.location.href = "/login";
       }
     }
-
     return Promise.reject(error);
   },
 );

@@ -88,11 +88,13 @@ const toMenit = (str) => {
 // ============================================================================
 // 4. COMPUTED — REKAP SUMMARY
 // ============================================================================
+// computed rekap di DashboardView.vue
 const rekap = computed(() => {
   const s = summary.value;
   return {
     hadir: s?.hadir ?? 0,
     terlambat: s?.terlambat ?? 0,
+    sakit: s?.sakit ?? 0, // ← tambahkan ini
     izin: s?.izin ?? 0,
     alfa: s?.alpha ?? 0,
     total: s?.total ?? 0,
