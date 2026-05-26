@@ -12,6 +12,8 @@ const loading = ref(true);
 const error = ref(null);
 const saving = ref(false);
 
+const angkatanOptions = ref([]);
+
 const today = new Date().toLocaleDateString("id-ID", {
   weekday: "long",
   day: "numeric",
@@ -19,47 +21,12 @@ const today = new Date().toLocaleDateString("id-ID", {
   year: "numeric",
 });
 
-// ── Helper ────────────────────────────────────────────────────────────────
-function normalizeDate(value) {
-  if (!value) return "";
-
-  // Kalau backend kirim format YYYY-MM-DD
-  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return value;
-  }
-
-  // Kalau backend kirim format ISO seperti 2024-01-01T00:00:00.000000Z
-  if (typeof value === "string" && value.includes("T")) {
-    return value.split("T")[0];
-  }
-
-  return "";
-}
-
-function cleanText(value) {
-  return typeof value === "string" ? value.trim() : (value ?? "");
-}
-
-function getFirstValidationError(errors) {
-  if (!errors || typeof errors !== "object") {
-    return null;
-  }
-
-  const firstField = Object.values(errors)[0];
-
-  if (Array.isArray(firstField)) {
-    return firstField[0];
-  }
-
-  return null;
-}
-
-// ── State profil & absensi ────────────────────────────────────────────────
 const profile = ref({
   nama: "",
   nis: "",
   kelas: "",
   jurusan: "",
+  angkatanId: null,
   angkatan: "",
   ttl: "",
   tempatLahir: "",
@@ -76,93 +43,131 @@ const profile = ref({
 });
 
 const statsRingkas = ref([
-  { label: "Kehadiran", value: "-", color: "#16a34a", bg: "#f0fdf4" },
-  { label: "Total Hadir", value: "-", color: "#2563eb", bg: "#eff6ff" },
-  { label: "Izin/Sakit", value: "-", color: "#d97706", bg: "#fffbeb" },
+  { label: "Hadir", value: "-", color: "#16a34a", bg: "#f0fdf4" },
+  { label: "Izin", value: "-", color: "#d97706", bg: "#fffbeb" },
+  { label: "Sakit", value: "-", color: "#2563eb", bg: "#eff6ff" },
   { label: "Alfa", value: "-", color: "#dc2626", bg: "#fef2f2" },
 ]);
 
 const editData = ref({ ...profile.value });
 
-// ── Fetch dari API ────────────────────────────────────────────────────────
-async function fetchProfile(showLoader = true) {
-  if (showLoader) {
-    loading.value = true;
-  }
+function normalizeDate(value) {
+  if (!value) return "";
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  if (typeof value === "string" && value.includes("T")) return value.split("T")[0];
+  return "";
+}
 
+function cleanText(value) {
+  return typeof value === "string" ? value.trim() : (value ?? "");
+}
+
+function getFirstValidationError(errors) {
+  if (!errors || typeof errors !== "object") return null;
+  const firstField = Object.values(errors)[0];
+  return Array.isArray(firstField) ? firstField[0] : null;
+}
+
+function formatStat(value) {
+  if (value === null || value === undefined || value === "") return "-";
+
+  const text = String(value).trim();
+
+  if (text === "") return "-";
+  if (text.includes("%")) return text;
+
+  const numeric = Number(text);
+  if (!Number.isNaN(numeric)) return `${numeric}%`;
+
+  return text;
+}
+
+function setAbsensiStats(absensi = {}) {
+  statsRingkas.value = [
+    {
+      label: "Hadir",
+      value: formatStat(absensi.persentase_hadir),
+      color: "#16a34a",
+      bg: "#f0fdf4",
+    },
+    {
+      label: "Izin",
+      value: formatStat(absensi.persentase_izin),
+      color: "#d97706",
+      bg: "#fffbeb",
+    },
+    {
+      label: "Sakit",
+      value: formatStat(absensi.persentase_sakit),
+      color: "#2563eb",
+      bg: "#eff6ff",
+    },
+    {
+      label: "Alfa",
+      value: formatStat(absensi.persentase_alfa),
+      color: "#dc2626",
+      bg: "#fef2f2",
+    },
+  ];
+}
+
+async function fetchProfile(showLoader = true) {
+  if (showLoader) loading.value = true;
   error.value = null;
 
   try {
-    const { data } = await api.get("/api/profil");
+    const response = await api.get("/api/profil");
 
-    const p = data?.data?.profil ?? {};
-    const a = data?.data?.absensi ?? {};
+    const profil = response.data?.data?.profil ?? {};
+    const absensi = response.data?.data?.absensi ?? {};
+
+    angkatanOptions.value = Array.isArray(response.data?.data?.angkatan_options)
+      ? response.data.data.angkatan_options
+      : [];
 
     profile.value = {
-      nama: p.nama ?? "",
-      nis: p.nis ?? "",
-      kelas: p.kelas ?? "",
-      jurusan: p.jurusan ?? "",
-      angkatan: p.angkatan ?? "",
-      ttl: p.ttl ?? "",
-
-      tempatLahir: p.tempat_lahir ?? "",
-      tanggalLahir: normalizeDate(p.tanggal_lahir),
-
-      jenisKelamin: p.jenis_kelamin ?? "",
-      agama: p.agama ?? "",
-      alamat: p.alamat ?? "",
-
-      noTelp: p.no_hp ?? p.no_telp ?? "",
-      email: p.email ?? "",
-
-      namaAyah: p.nama_ayah ?? "",
-      namaIbu: p.nama_ibu ?? "",
-      noWali: p.no_wali ?? "",
-
-      foto: p.foto ?? null,
+      nama: profil.nama ?? "",
+      nis: profil.nis ?? "",
+      kelas: profil.kelas ?? "-",
+      jurusan: profil.jurusan ?? "-",
+      angkatanId: profil.angkatan_id ?? null,
+      angkatan: profil.angkatan ?? "-",
+      ttl: profil.ttl ?? "-",
+      tempatLahir: profil.tempat_lahir ?? "",
+      tanggalLahir: normalizeDate(profil.tanggal_lahir),
+      jenisKelamin: profil.jenis_kelamin ?? "-",
+      agama: profil.agama ?? "",
+      alamat: profil.alamat ?? "",
+      noTelp: profil.no_hp ?? profil.no_telp ?? "",
+      email: profil.email ?? "",
+      namaAyah: profil.nama_ayah ?? "",
+      namaIbu: profil.nama_ibu ?? "",
+      noWali: profil.no_wali ?? "",
+      foto: profil.foto ?? null,
     };
 
-    statsRingkas.value = [
-      {
-        label: "Kehadiran",
-        value: a.persentase_hadir ?? "-",
-        color: "#16a34a",
-        bg: "#f0fdf4",
-      },
-      {
-        label: "Total Hadir",
-        value: a.total_hadir ?? "-",
-        color: "#2563eb",
-        bg: "#eff6ff",
-      },
-      {
-        label: "Izin/Sakit",
-        value: a.total_izin_sakit ?? "-",
-        color: "#d97706",
-        bg: "#fffbeb",
-      },
-      {
-        label: "Alfa",
-        value: a.total_alfa ?? "-",
-        color: "#dc2626",
-        bg: "#fef2f2",
-      },
-    ];
-  } catch (err) {
-    console.error(err);
+    editData.value = { ...profile.value };
 
-    error.value = err.response?.data?.message ?? "Gagal memuat profil. Silakan coba lagi.";
-  } finally {
-    if (showLoader) {
-      loading.value = false;
+    setAbsensiStats(absensi);
+  } catch (err) {
+    console.error("Gagal mengambil profil:", err);
+
+    if (err.response?.status === 401) {
+      error.value = "Sesi login sudah habis. Silakan login ulang.";
+    } else if (err.response?.status === 404) {
+      error.value = "Data siswa tidak ditemukan untuk akun ini.";
+    } else {
+      error.value = err.response?.data?.message ?? "Gagal memuat profil. Silakan coba lagi.";
     }
+  } finally {
+    if (showLoader) loading.value = false;
   }
 }
 
-onMounted(() => fetchProfile(true));
+onMounted(() => {
+  fetchProfile(true);
+});
 
-// ── Edit / Simpan ─────────────────────────────────────────────────────────
 function startEdit() {
   editData.value = { ...profile.value };
   editMode.value = true;
@@ -181,6 +186,7 @@ async function saveEdit() {
   try {
     const payload = {
       nama: cleanText(editData.value.nama),
+      angkatan_id: editData.value.angkatanId || null,
       agama: cleanText(editData.value.agama) || null,
       tempat_lahir: cleanText(editData.value.tempatLahir) || null,
       tanggal_lahir: normalizeDate(editData.value.tanggalLahir) || null,
@@ -193,7 +199,6 @@ async function saveEdit() {
     };
 
     await api.put("/api/profil", payload);
-
     await fetchProfile(false);
 
     editMode.value = false;
@@ -203,11 +208,10 @@ async function saveEdit() {
       showSuccessToast.value = false;
     }, 3000);
   } catch (err) {
-    console.error(err);
+    console.error("Gagal menyimpan profil:", err);
 
     if (err.response?.status === 422) {
       const firstError = getFirstValidationError(err.response.data?.errors);
-
       alert(firstError ?? "Validasi gagal. Periksa kembali data profil.");
       return;
     }
@@ -282,6 +286,7 @@ const initials = computed(() => {
                 <h2 class="hero-name">{{ profile.nama }}</h2>
                 <div class="hero-meta-row">
                   <span class="hero-chip">NIS: {{ profile.nis }}</span>
+                  <span class="hero-chip">Angkatan: {{ profile.angkatan }}</span>
                   <span class="hero-chip">{{ profile.kelas }}</span>
                   <span class="hero-chip">{{ profile.jurusan }}</span>
                 </div>
@@ -352,6 +357,7 @@ const initials = computed(() => {
                     <label class="fl">Nama Lengkap</label>
                     <input v-model="editData.nama" class="field-input" />
                   </div>
+
                   <div class="field-row edit">
                     <label class="fl">NIS</label>
                     <input
@@ -361,6 +367,7 @@ const initials = computed(() => {
                       style="opacity: 0.5"
                     />
                   </div>
+
                   <div class="field-row edit">
                     <label class="fl">Kelas</label>
                     <input
@@ -370,6 +377,17 @@ const initials = computed(() => {
                       style="opacity: 0.5"
                     />
                   </div>
+
+                  <div class="field-row edit">
+                    <label class="fl">Angkatan</label>
+                    <select v-model="editData.angkatanId" class="field-input">
+                      <option :value="null">Pilih Angkatan</option>
+                      <option v-for="a in angkatanOptions" :key="a.id" :value="a.id">
+                        {{ a.nama }}
+                      </option>
+                    </select>
+                  </div>
+
                   <div class="field-row edit">
                     <label class="fl">Tempat Lahir</label>
                     <input
@@ -378,10 +396,12 @@ const initials = computed(() => {
                       placeholder="Contoh: Jakarta"
                     />
                   </div>
+
                   <div class="field-row edit">
                     <label class="fl">Tanggal Lahir</label>
                     <input v-model="editData.tanggalLahir" type="date" class="field-input" />
                   </div>
+
                   <div class="field-row edit">
                     <label class="fl">Agama</label>
                     <input v-model="editData.agama" class="field-input" />

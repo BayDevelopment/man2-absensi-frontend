@@ -32,7 +32,7 @@ const showJadwal = computed(() => notifSetting.value.jadwal);
 // ============================================================================
 const waktuSekarang = ref(new Date());
 let timerJam = null;
-let timerFetch = null; // sekarang pakai setTimeout (reschedule), bukan setInterval
+let timerFetch = null;
 
 const todayStr = computed(() =>
   waktuSekarang.value.toLocaleDateString("id-ID", {
@@ -60,7 +60,6 @@ const jamSekarang = computed(() => {
 // ============================================================================
 // 2. LOADING STATE, ERROR STATE & DATA MENTAH
 // ============================================================================
-// Tambah flag 'settings' agar template tidak flicker saat notifSetting belum siap
 const isLoading = ref({ summary: true, jadwal: true, pengumuman: true, settings: true });
 const errorMsg = ref(null);
 const isError = ref(false);
@@ -70,7 +69,6 @@ const jadwalHariIni = ref([]);
 const pengumuman = ref([]);
 const namaSiswa = ref("");
 
-// Pisah abort controller agar settings & dashboard bisa di-abort sendiri-sendiri
 const abortDashboard = ref(null);
 const abortSettings = ref(null);
 
@@ -88,13 +86,12 @@ const toMenit = (str) => {
 // ============================================================================
 // 4. COMPUTED — REKAP SUMMARY
 // ============================================================================
-// computed rekap di DashboardView.vue
 const rekap = computed(() => {
   const s = summary.value;
   return {
     hadir: s?.hadir ?? 0,
     terlambat: s?.terlambat ?? 0,
-    sakit: s?.sakit ?? 0, // ← tambahkan ini
+    sakit: s?.sakit ?? 0,
     izin: s?.izin ?? 0,
     alfa: s?.alpha ?? 0,
     total: s?.total ?? 0,
@@ -124,13 +121,7 @@ const jadwalDenganStatus = computed(() => {
 
     const tipeAbsen = j.tipe_absen ?? (j.is_jadwal_pertama ? "mandiri" : "guru");
     const isGuru = tipeAbsen === "guru";
-
-    const isIstirahat =
-      tipeAbsen === "non_absen" ||
-      j.is_break === true ||
-      j.is_break === 1 ||
-      j.is_break === "1" ||
-      j.is_istirahat === true;
+    const isIstirahat = tipeAbsen === "non_absen" || !!j.is_break || !!j.is_istirahat;
 
     if (isIstirahat) {
       return {
@@ -234,16 +225,55 @@ const jadwalDenganStatus = computed(() => {
   });
 });
 
+// ============================================================================
+// 5b. COMPUTED — STATUS ABSEN HERO BADGE
+// ============================================================================
+
+// Semua jadwal yang bukan istirahat
+const jadwalAktif = computed(() => jadwalDenganStatus.value.filter((j) => !j.isIstirahat));
+
+// true hanya jika SEMUA jadwal non-istirahat sudah diabsen
 const sudahAbsenHariIni = computed(() => {
-  const first =
-    jadwalDenganStatus.value.find((j) => j.is_jadwal_pertama) ?? jadwalDenganStatus.value[0];
-  return !!first?.sudahAbsen;
+  if (jadwalAktif.value.length === 0) return false;
+  return jadwalAktif.value.every((j) => !!j.sudahAbsen);
 });
 
-const statusAbsenHariIni = computed(() => {
-  const first =
-    jadwalDenganStatus.value.find((j) => j.is_jadwal_pertama) ?? jadwalDenganStatus.value[0];
-  return first?.status_absen ?? null;
+// Jadwal non-istirahat yang BELUM diabsen oleh siswa sendiri (bukan via guru)
+const jadwalBelumAbsen = computed(() =>
+  jadwalAktif.value.filter((j) => !j.sudahAbsen && !j.isGuru),
+);
+
+// Nama mapel pertama yang belum diabsen
+const namaMapelBelumAbsen = computed(() => {
+  const j = jadwalBelumAbsen.value[0];
+  return j?.mapel ?? j?.mata_pelajaran?.nama ?? null;
+});
+
+// Nama mapel terakhir yang sudah berhasil diabsen
+const namaMapelTerakhirAbsen = computed(() => {
+  const j = jadwalAktif.value.filter((x) => !!x.sudahAbsen).at(-1);
+  return j?.mapel ?? j?.mata_pelajaran?.nama ?? null;
+});
+
+// Objek teks + sub untuk hero badge
+// Contoh hasil:
+//   Tidak ada jadwal  → { teks: "Tidak Ada Jadwal Hari Ini", sub: null }
+//   Belum absen       → { teks: "Belum Absen Hari Ini", sub: "Matematika" }
+//   Sudah semua absen → { teks: "Sudah Absen", sub: "Fisika" }
+const heroBadge = computed(() => {
+  if (jadwalAktif.value.length === 0) {
+    return { teks: "Tidak Ada Jadwal Hari Ini", sub: null };
+  }
+  if (sudahAbsenHariIni.value) {
+    return {
+      teks: "Sudah Absen",
+      sub: namaMapelTerakhirAbsen.value ?? null,
+    };
+  }
+  return {
+    teks: "Belum Absen Hari Ini",
+    sub: namaMapelBelumAbsen.value ?? null,
+  };
 });
 
 // ============================================================================
@@ -303,7 +333,6 @@ const goToAbsen = (jadwal) => {
 
 // ============================================================================
 // 9. FETCH NOTIFICATION SETTING
-// — Sekarang support AbortController agar tidak leak saat unmount
 // ============================================================================
 const fetchNotificationSetting = async () => {
   if (abortSettings.value) abortSettings.value.abort();
@@ -322,7 +351,6 @@ const fetchNotificationSetting = async () => {
   } catch (err) {
     if (err.name === "CanceledError") return;
     console.error("[Dashboard] Gagal fetch setting notifikasi:", err);
-    // fallback aman, tidak ubah state yang sudah ada jika pernah berhasil sebelumnya
     notifSetting.value = { kehadiran: true, pengumuman: true, jadwal: false };
   } finally {
     isLoading.value.settings = false;
@@ -372,13 +400,12 @@ const fetchDashboard = async () => {
 };
 
 // ============================================================================
-// 11. FETCH GABUNGAN — jalankan settings & dashboard secara paralel
+// 11. FETCH GABUNGAN
 // ============================================================================
 const fetchAll = () => Promise.all([fetchNotificationSetting(), fetchDashboard()]);
 
 // ============================================================================
-// 12. RESCHEDULE — fetch selesai dulu, baru jadwalkan berikutnya
-// Mencegah overlap fetch ketika koneksi lambat
+// 12. RESCHEDULE
 // ============================================================================
 const scheduleNext = () => {
   timerFetch = setTimeout(async () => {
@@ -391,21 +418,17 @@ const scheduleNext = () => {
 // 13. LIFECYCLE
 // ============================================================================
 onMounted(async () => {
-  // Jam tetap jalan sejak awal, tidak perlu tunggu fetch
   timerJam = setInterval(() => {
     waktuSekarang.value = new Date();
   }, 60_000);
 
-  // Fetch pertama: settings & dashboard selesai dulu sebelum render data
   await fetchAll();
-
-  // Baru mulai siklus refresh berikutnya setelah fetch pertama selesai
   scheduleNext();
 });
 
 onUnmounted(() => {
   if (timerJam) clearInterval(timerJam);
-  if (timerFetch) clearTimeout(timerFetch); // clearTimeout karena pakai setTimeout
+  if (timerFetch) clearTimeout(timerFetch);
   abortDashboard.value?.abort();
   abortSettings.value?.abort();
 });
@@ -443,18 +466,17 @@ onUnmounted(() => {
               <p class="hero-greeting">{{ greeting }},</p>
               <h1 class="hero-name">{{ namaSiswa }} 👋</h1>
               <p class="hero-date">{{ todayStr }}</p>
+
+              <!-- ✅ BADGE DIPERBAIKI: tampilkan nama mapel yang belum/sudah diabsen -->
               <div
                 class="hero-absen-badge"
                 :class="sudahAbsenHariIni ? 'badge-hadir' : 'badge-belum'"
               >
                 <span class="badge-dot" />
-                <span v-if="sudahAbsenHariIni">
-                  Sudah Absen
-                  <span v-if="statusAbsenHariIni" class="badge-status">
-                    · {{ statusAbsenHariIni }}
-                  </span>
+                <span>
+                  {{ heroBadge.teks }}
+                  <span v-if="heroBadge.sub" class="badge-status"> · {{ heroBadge.sub }} </span>
                 </span>
-                <span v-else>Belum Absen Hari Ini</span>
               </div>
             </div>
 
@@ -831,14 +853,12 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <!-- SKELETON -->
               <template v-if="isLoading.pengumuman || isLoading.settings">
                 <div class="pengumuman-list">
                   <div v-for="i in 2" :key="i" class="skeleton sk-pengumuman" />
                 </div>
               </template>
 
-              <!-- KOSONG -->
               <template v-else-if="pengumumanDenganWarna.length === 0">
                 <div class="empty-state">
                   <span class="empty-icon">📭</span>
@@ -846,7 +866,6 @@ onUnmounted(() => {
                 </div>
               </template>
 
-              <!-- DATA -->
               <template v-else>
                 <div class="pengumuman-list">
                   <article
@@ -1577,7 +1596,6 @@ onUnmounted(() => {
   border-color: #fecaca;
 }
 
-/* Tombol via guru — selalu disabled, abu-abu */
 .absen-btn-via-guru {
   background: #f1f5f9 !important;
   color: #94a3b8 !important;
@@ -1749,7 +1767,6 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-/* Isi pengumuman — expand/collapse dengan max-height */
 .peng-isi {
   font-size: 11.5px;
   color: #4b5563;
@@ -1760,11 +1777,11 @@ onUnmounted(() => {
     max-height 0.4s ease,
     -webkit-mask-image 0.4s ease,
     mask-image 0.4s ease;
-  max-height: 2000px; /* expanded: cukup besar untuk konten apapun */
+  max-height: 2000px;
 }
 
 .peng-isi.peng-isi-clamped {
-  max-height: 4.8em; /* collapsed: ~3 baris */
+  max-height: 4.8em;
   -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
   mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
 }
@@ -1781,7 +1798,6 @@ onUnmounted(() => {
   margin: 6px 0;
 }
 
-/* Tombol lihat selengkapnya / sedikit */
 .peng-toggle {
   display: inline-block;
   margin-top: 6px;
@@ -1800,7 +1816,6 @@ onUnmounted(() => {
   text-decoration: underline;
 }
 
-/* Footer chip */
 .peng-footer {
   display: flex;
   flex-wrap: wrap;
