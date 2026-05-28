@@ -1,12 +1,60 @@
 <script setup>
-import { computed, ref } from "vue";
+import { computed, ref, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
+import { useNotificationStore } from "../stores/notification";
+import { useAppearanceStore } from "@/stores/useAppearanceStore";
 
 const authStore = useAuthStore();
+const notifStore = useNotificationStore();
+const appearanceStore = useAppearanceStore();
 const router = useRouter();
+
 const searchQuery = ref("");
 const dropdownOpen = ref(false);
+const notifOpen = ref(false);
+
+const emit = defineEmits(["toggle-sidebar"]);
+
+const navbarTheme = computed(() => appearanceStore.resolvedTheme || "light");
+
+const uiText = computed(() => {
+  const isEn = appearanceStore.language === "en";
+
+  return isEn
+    ? {
+        openMenu: "Open menu",
+        searchPlaceholder: "Search something...",
+        notifications: "Notifications",
+        new: "new",
+        markAllRead: "Mark all as read",
+        noNotifications: "No notifications",
+        justNow: "Just now",
+        minutesAgo: "minutes ago",
+        hoursAgo: "hours ago",
+        daysAgo: "days ago",
+        student: "Student",
+        myProfile: "My Profile",
+        settings: "Settings",
+        logout: "Logout",
+      }
+    : {
+        openMenu: "Buka menu",
+        searchPlaceholder: "Cari sesuatu...",
+        notifications: "Notifikasi",
+        new: "baru",
+        markAllRead: "Tandai semua dibaca",
+        noNotifications: "Tidak ada notifikasi",
+        justNow: "Baru saja",
+        minutesAgo: "menit lalu",
+        hoursAgo: "jam lalu",
+        daysAgo: "hari lalu",
+        student: "Siswa",
+        myProfile: "Profil Saya",
+        settings: "Pengaturan",
+        logout: "Keluar",
+      };
+});
 
 const initials = computed(() => {
   const name = authStore.user?.name || "";
@@ -18,7 +66,37 @@ const initials = computed(() => {
     .slice(0, 2);
 });
 
-const emit = defineEmits(["toggle-sidebar"]);
+const formatTime = (dateStr) => {
+  if (!dateStr) return "";
+
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diff = Math.floor((now - date) / 1000 / 60);
+
+  if (diff < 1) return uiText.value.justNow;
+  if (diff < 60) return `${diff} ${uiText.value.minutesAgo}`;
+  if (diff < 1440) return `${Math.floor(diff / 60)} ${uiText.value.hoursAgo}`;
+  return `${Math.floor(diff / 1440)} ${uiText.value.daysAgo}`;
+};
+
+const notifIcon = (type) => {
+  if (type === "absen_success") return "✅";
+  if (type === "absen_warning") return "⚠️";
+  return "📢";
+};
+
+const toggleNotif = () => {
+  notifOpen.value = !notifOpen.value;
+  if (dropdownOpen.value) dropdownOpen.value = false;
+};
+
+const closeNotif = () => {
+  notifOpen.value = false;
+};
+
+const handleNotifClick = (n) => {
+  notifStore.markRead(n.id);
+};
 
 const handleLogout = async () => {
   dropdownOpen.value = false;
@@ -28,17 +106,26 @@ const handleLogout = async () => {
 
 const toggleDropdown = () => {
   dropdownOpen.value = !dropdownOpen.value;
+  if (notifOpen.value) notifOpen.value = false;
 };
 
 const closeDropdown = () => {
   dropdownOpen.value = false;
 };
+
+let interval = null;
+
+onMounted(() => {
+  notifStore.fetchNotifications();
+  interval = setInterval(() => notifStore.fetchNotifications(), 60000);
+});
+
+onUnmounted(() => clearInterval(interval));
 </script>
 
 <template>
-  <header class="nb-root">
-    <!-- Hamburger (mobile) -->
-    <button class="nb-hamburger" @click="emit('toggle-sidebar')" aria-label="Buka menu">
+  <header class="nb-root" :data-theme="navbarTheme">
+    <button class="nb-hamburger" @click="emit('toggle-sidebar')" :aria-label="uiText.openMenu">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path
           stroke-linecap="round"
@@ -48,7 +135,6 @@ const closeDropdown = () => {
       </svg>
     </button>
 
-    <!-- Search -->
     <div class="nb-search-wrap">
       <span class="nb-search-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -59,37 +145,95 @@ const closeDropdown = () => {
           />
         </svg>
       </span>
+
       <input
         v-model="searchQuery"
         type="text"
-        placeholder="Cari sesuatu..."
+        :placeholder="uiText.searchPlaceholder"
         class="nb-search-input"
       />
+
       <kbd class="nb-search-kbd">⌘K</kbd>
     </div>
 
-    <!-- Right -->
     <div class="nb-right">
-      <!-- Notif -->
-      <button class="nb-icon-btn" aria-label="Notifikasi">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
-          />
-        </svg>
-        <span class="nb-notif-dot" />
-      </button>
+      <div class="nb-profile-wrap" v-click-outside="closeNotif">
+        <button class="nb-icon-btn" @click="toggleNotif" :aria-label="uiText.notifications">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
+            />
+          </svg>
+          <span v-if="notifStore.hasUnread" class="nb-notif-dot" />
+        </button>
+
+        <transition name="dropdown">
+          <div v-if="notifOpen" class="notif-dropdown">
+            <div class="notif-head">
+              <span class="notif-head-title">{{ uiText.notifications }}</span>
+
+              <span v-if="notifStore.unreadCount > 0" class="notif-count-badge">
+                {{ notifStore.unreadCount }} {{ uiText.new }}
+              </span>
+
+              <button
+                v-if="notifStore.unreadCount > 0"
+                class="notif-read-all"
+                @click="notifStore.markAllRead()"
+              >
+                {{ uiText.markAllRead }}
+              </button>
+            </div>
+
+            <div class="notif-divider" />
+
+            <div class="notif-list">
+              <div v-if="notifStore.notifications.length === 0" class="notif-empty">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  style="width: 32px; height: 32px; color: #d1d5db"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
+                  />
+                </svg>
+                <p>{{ uiText.noNotifications }}</p>
+              </div>
+
+              <div
+                v-for="n in notifStore.notifications"
+                :key="n.id"
+                class="notif-item"
+                :class="{ 'notif-unread': !n.read }"
+                @click="handleNotifClick(n)"
+              >
+                <span class="notif-item-icon">{{ notifIcon(n.type) }}</span>
+                <div class="notif-item-body">
+                  <p class="notif-item-title">{{ n.title }}</p>
+                  <p class="notif-item-msg">{{ n.message }}</p>
+                  <p class="notif-item-time">{{ formatTime(n.created_at) }}</p>
+                </div>
+                <span v-if="!n.read" class="notif-unread-dot" />
+              </div>
+            </div>
+          </div>
+        </transition>
+      </div>
 
       <div class="nb-divider" />
 
-      <!-- Profile dropdown -->
       <div class="nb-profile-wrap" v-click-outside="closeDropdown">
         <button class="nb-user" @click="toggleDropdown" :class="{ active: dropdownOpen }">
           <div class="nb-avatar">{{ initials }}</div>
           <div class="nb-user-info">
-            <span class="nb-user-name">{{ authStore.user?.name || "Siswa" }}</span>
+            <span class="nb-user-name">{{ authStore.user?.name || uiText.student }}</span>
             <span class="nb-user-nisn">NISN: {{ authStore.user?.nisn || "—" }}</span>
           </div>
           <svg
@@ -104,22 +248,19 @@ const closeDropdown = () => {
           </svg>
         </button>
 
-        <!-- Dropdown menu -->
         <transition name="dropdown">
           <div v-if="dropdownOpen" class="nb-dropdown">
-            <!-- User info header -->
             <div class="dd-header">
               <div class="dd-avatar">{{ initials }}</div>
               <div class="dd-info">
-                <span class="dd-name">{{ authStore.user?.name || "Siswa" }}</span>
+                <span class="dd-name">{{ authStore.user?.name || uiText.student }}</span>
                 <span class="dd-nisn">NISN: {{ authStore.user?.nisn || "—" }}</span>
-                <span class="dd-badge">Siswa</span>
+                <span class="dd-badge">{{ uiText.student }}</span>
               </div>
             </div>
 
             <div class="dd-divider" />
 
-            <!-- Menu items -->
             <RouterLink to="/profil" class="dd-item" @click="closeDropdown">
               <span class="dd-item-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -130,7 +271,7 @@ const closeDropdown = () => {
                   />
                 </svg>
               </span>
-              Profil Saya
+              {{ uiText.myProfile }}
             </RouterLink>
 
             <RouterLink to="/pengaturan" class="dd-item" @click="closeDropdown">
@@ -148,7 +289,7 @@ const closeDropdown = () => {
                   />
                 </svg>
               </span>
-              Pengaturan
+              {{ uiText.settings }}
             </RouterLink>
 
             <div class="dd-divider" />
@@ -163,7 +304,7 @@ const closeDropdown = () => {
                   />
                 </svg>
               </span>
-              Keluar
+              {{ uiText.logout }}
             </button>
           </div>
         </transition>
@@ -173,6 +314,145 @@ const closeDropdown = () => {
 </template>
 
 <style scoped>
+/* Notif Dropdown */
+.notif-list {
+  max-height: 200px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+/* Opsional — styling scrollbar */
+.notif-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.notif-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.notif-list::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 999px;
+}
+
+.notif-list::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+.notif-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 320px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.notif-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+}
+.notif-head-title {
+  font-weight: 600;
+  font-size: 14px;
+  flex: 1;
+}
+.notif-count-badge {
+  font-size: 11px;
+  background: #eff6ff;
+  color: #3b82f6;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+.notif-read-all {
+  font-size: 11px;
+  color: #6b7280;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.notif-read-all:hover {
+  color: #3b82f6;
+}
+.notif-divider {
+  height: 1px;
+  background: #f3f4f6;
+}
+
+.notif-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+.notif-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 16px;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+}
+.notif-item:hover {
+  background: #f9fafb;
+}
+.notif-unread {
+  background: #eff6ff;
+}
+.notif-unread:hover {
+  background: #dbeafe;
+}
+
+.notif-item-icon {
+  font-size: 18px;
+  margin-top: 2px;
+}
+.notif-item-body {
+  flex: 1;
+}
+.notif-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 2px;
+}
+.notif-item-msg {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0 0 4px;
+  line-height: 1.4;
+}
+.notif-item-time {
+  font-size: 11px;
+  color: #9ca3af;
+  margin: 0;
+}
+
+.notif-unread-dot {
+  width: 8px;
+  height: 8px;
+  background: #3b82f6;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
 .nb-root {
   position: sticky;
   top: 0;
@@ -569,5 +849,155 @@ const closeDropdown = () => {
   .nb-icon-btn {
     display: none;
   }
+}
+
+.nb-root[data-theme="dark"] {
+  background: #111827;
+  border-bottom-color: #243044;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.nb-root[data-theme="dark"] .nb-hamburger {
+  color: #cbd5e1;
+}
+
+.nb-root[data-theme="dark"] .nb-hamburger:hover {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+}
+
+.nb-root[data-theme="dark"] .nb-search-icon {
+  color: #64748b;
+}
+
+.nb-root[data-theme="dark"] .nb-search-input {
+  background: #1f2937;
+  border-color: #243044;
+  color: #e5e7eb;
+}
+
+.nb-root[data-theme="dark"] .nb-search-input::placeholder {
+  color: #64748b;
+}
+
+.nb-root[data-theme="dark"] .nb-search-input:focus {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+  background: #111827;
+}
+
+.nb-root[data-theme="dark"] .nb-search-kbd,
+.nb-root[data-theme="dark"] .nb-icon-btn,
+.nb-root[data-theme="dark"] .nb-user {
+  background: #1f2937;
+  border-color: #243044;
+  color: #cbd5e1;
+}
+
+.nb-root[data-theme="dark"] .nb-icon-btn:hover,
+.nb-root[data-theme="dark"] .nb-user:hover,
+.nb-root[data-theme="dark"] .nb-user.active {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: #22c55e;
+  color: #22c55e;
+}
+
+.nb-root[data-theme="dark"] .nb-divider {
+  background: #243044;
+}
+
+.nb-root[data-theme="dark"] .nb-user-name,
+.nb-root[data-theme="dark"] .dd-name {
+  color: #bbf7d0;
+}
+
+.nb-root[data-theme="dark"] .nb-user-nisn,
+.nb-root[data-theme="dark"] .nb-chevron,
+.nb-root[data-theme="dark"] .dd-nisn {
+  color: #94a3b8;
+}
+
+.nb-root[data-theme="dark"] .notif-dropdown,
+.nb-root[data-theme="dark"] .nb-dropdown {
+  background: #111827;
+  border-color: #243044;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.nb-root[data-theme="dark"] .notif-head-title,
+.nb-root[data-theme="dark"] .notif-item-title {
+  color: #e5e7eb;
+}
+
+.nb-root[data-theme="dark"] .notif-count-badge,
+.nb-root[data-theme="dark"] .dd-badge {
+  background: rgba(34, 197, 94, 0.18);
+  color: #22c55e;
+}
+
+.nb-root[data-theme="dark"] .notif-read-all,
+.nb-root[data-theme="dark"] .notif-item-msg,
+.nb-root[data-theme="dark"] .notif-item-time,
+.nb-root[data-theme="dark"] .notif-empty {
+  color: #94a3b8;
+}
+
+.nb-root[data-theme="dark"] .notif-divider,
+.nb-root[data-theme="dark"] .dd-divider {
+  background: #243044;
+}
+
+.nb-root[data-theme="dark"] .notif-item:hover,
+.nb-root[data-theme="dark"] .dd-item:hover {
+  background: #1f2937;
+}
+
+.nb-root[data-theme="dark"] .notif-unread {
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.nb-root[data-theme="dark"] .notif-unread:hover {
+  background: rgba(34, 197, 94, 0.16);
+}
+
+.nb-root[data-theme="dark"] .dd-header {
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.nb-root[data-theme="dark"] .dd-item {
+  color: #cbd5e1;
+}
+
+.nb-root[data-theme="dark"] .dd-item:hover {
+  color: #f8fafc;
+}
+
+.nb-root[data-theme="dark"] .dd-item-icon {
+  background: #1f2937;
+}
+
+.nb-root[data-theme="dark"] .dd-item:hover .dd-item-icon {
+  background: #243044;
+}
+
+.nb-root[data-theme="dark"] .dd-logout {
+  color: #f87171;
+}
+
+.nb-root[data-theme="dark"] .dd-logout:hover {
+  background: rgba(220, 38, 38, 0.12);
+  color: #fca5a5;
+}
+
+.nb-root[data-theme="dark"] .dd-logout .dd-item-icon {
+  background: rgba(220, 38, 38, 0.12);
+}
+
+.nb-root[data-theme="dark"] .dd-logout:hover .dd-item-icon {
+  background: rgba(220, 38, 38, 0.18);
+}
+
+.nb-root[data-theme="dark"] .nb-notif-dot {
+  border-color: #111827;
 }
 </style>

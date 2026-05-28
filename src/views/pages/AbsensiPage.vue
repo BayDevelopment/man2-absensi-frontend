@@ -5,48 +5,35 @@ import { useAuthStore } from "../../stores/auth";
 import Sidebar from "../../components/AppSidebar.vue";
 import Navbar from "../../components/AppNavbar.vue";
 import AppFooter from "../../components/AppFooter.vue";
+import { useAppearanceStore } from "@/stores/useAppearanceStore";
 import Swal from "sweetalert2";
 import FaceVerificationModal from "../../components/absensi/FaceVerificationModal.vue";
+
 const showFaceModal = ref(false);
 const pendingFaceRecord = ref(null);
 
 function base64ToFile(base64, filename = "face-verification.jpg") {
   if (!base64 || typeof base64 !== "string" || !base64.startsWith("data:image/")) {
-    throw new Error("Format foto wajah tidak valid.");
+    throw new Error(uiText.value.faceInvalid);
   }
-
   const arr = base64.split(",");
-  if (arr.length !== 2) {
-    throw new Error("Format foto wajah tidak valid.");
-  }
-
+  if (arr.length !== 2) throw new Error(uiText.value.faceInvalid);
   const mime = arr[0].match(/:(.*?);/)?.[1] || "image/jpeg";
   const allowedMime = ["image/jpeg", "image/jpg", "image/png"];
-
-  if (!allowedMime.includes(mime)) {
-    throw new Error("Format foto wajah harus JPG atau PNG.");
-  }
-
+  if (!allowedMime.includes(mime)) throw new Error(uiText.value.faceMime);
   const bstr = atob(arr[1]);
-  const maxBytes = 2 * 1024 * 1024; // harus selaras dengan validasi Laravel max:2048
-
-  if (bstr.length > maxBytes) {
-    throw new Error("Ukuran foto wajah maksimal 2 MB.");
-  }
-
+  const maxBytes = 2 * 1024 * 1024;
+  if (bstr.length > maxBytes) throw new Error(uiText.value.faceSize);
   let n = bstr.length;
   const u8arr = new Uint8Array(n);
-
-  while (n--) {
-    u8arr[n] = bstr.charCodeAt(n);
-  }
-
+  while (n--) u8arr[n] = bstr.charCodeAt(n);
   return new File([u8arr], filename, { type: mime });
 }
+
 // ============================================================================
 // TOAST & ALERT HELPERS
 // ============================================================================
-function showToast(icon = "error", title = "Terjadi kesalahan.") {
+function showToast(icon = "error", title = uiText.value.errorDefault) {
   Swal.fire({
     toast: true,
     position: "top-end",
@@ -57,17 +44,13 @@ function showToast(icon = "error", title = "Terjadi kesalahan.") {
     timerProgressBar: true,
     background: "#ffffff",
     color: "#111827",
-    customClass: {
-      popup: "swal-toast-popup",
-      title: "swal-toast-title",
-    },
+    customClass: { popup: "swal-toast-popup", title: "swal-toast-title" },
   });
 }
 
 function showAbsensiAlert(error) {
   const type = error.response?.data?.type;
   const message = error.response?.data?.message || "Terjadi kesalahan.";
-
   const errorMap = {
     face_not_match: [
       "error",
@@ -78,8 +61,8 @@ function showAbsensiAlert(error) {
       "warning",
       "Data wajah belum terdaftar. Silakan hubungi guru atau operator.",
     ],
-    face_image_required: ["warning", "Foto wajah wajib dikirim sebagai bukti absensi."],
-    invalid_face_descriptor: ["warning", "Data wajah tidak valid. Silakan ulangi scan wajah."],
+    face_image_required: ["warning", uiText.value.facePhotoRequired],
+    invalid_face_descriptor: ["warning", uiText.value.faceDataInvalid],
     attendance_not_open: ["info", "Absensi belum dibuka."],
     subject_finished: ["warning", "Mapel sudah selesai. Anda tidak bisa absen masuk."],
     already_absen: ["warning", "Anda sudah memiliki catatan di jadwal ini."],
@@ -103,7 +86,6 @@ function showAbsensiAlert(error) {
     ],
     server_error: ["error", message],
   };
-
   const [icon, title] = errorMap[type] ?? ["error", message];
   showToast(icon, title);
 }
@@ -113,6 +95,211 @@ function showAbsensiAlert(error) {
 // ============================================================================
 const authStore = useAuthStore();
 const sidebarOpen = ref(false);
+const appearanceStore = useAppearanceStore();
+
+const pageTheme = computed(() => appearanceStore.resolvedTheme || "light");
+const isEn = computed(() => appearanceStore.language === "en");
+
+const uiText = computed(() =>
+  isEn.value
+    ? {
+        student: "Student",
+        errorDefault: "An error occurred.",
+        faceInvalid: "Invalid face photo format.",
+        faceMime: "Face photo must be JPG or PNG.",
+        faceSize: "Face photo size must be maximum 2 MB.",
+        title: "My Attendance",
+        subtitle: "Hi",
+        subtitleEnd: "Track your attendance here.",
+        applyLeave: "Submit Leave / Sick",
+        today: "Today",
+        week: "This Week",
+        month: "This Month",
+        search: "Search subject, teacher...",
+        allSubjects: "All Subjects",
+        allStatus: "All Status",
+        history: "Attendance History",
+        loading: "Loading...",
+        records: "records",
+        noData: "No data found",
+        progressTitle: "This Month Attendance Progress",
+        present: "Present",
+        late: "Late",
+        leaveSick: "Leave / Sick",
+        attendancePercent: "% Attendance",
+        date: "Date",
+        day: "Day",
+        subject: "Subject",
+        teacher: "Teacher",
+        checkInTime: "Check In",
+        checkOutTime: "Check Out",
+        status: "Status",
+        note: "Note",
+        action: "Action",
+        process: "Processing...",
+        checkInNow: "Check In Now",
+        subjectDone: "Subject Finished",
+        noAction: "No Action",
+        finished: "Done ✓",
+        checkedIn: "Checked In",
+        limitPassed: "Limit Passed",
+        morningOnly: "Morning Only",
+        detail: "View Detail",
+        checkIn: "Check In",
+        checkOut: "Check Out",
+        detailTitle: "Attendance Detail",
+        close: "Close",
+        leaveTitle: "Submit Leave / Sick",
+        absentDate: "Absent Date",
+        schedule: "Schedule",
+        selectSchedule: "-- Select Schedule --",
+        leaveWarning:
+          "⚠️ Leave/Sick is only available for morning attendance before the late limit.",
+        absenceType: "Absence Type",
+        leave: "Leave",
+        sick: "Sick",
+        description: "Description",
+        optional: "(optional)",
+        sickPlaceholder: "Example: Fever and unable to attend class",
+        leavePlaceholder: "Write your leave reason if needed...",
+        uploadSickLetter: "Upload Sick Letter",
+        uploadSickHint: "Click to upload sick letter",
+        fileInfo: ".pdf / .jpg / .png — max 2 MB",
+        cancel: "Cancel",
+        sending: "Sending...",
+        submit: "Submit Request",
+        supportingDoc: "Supporting Document",
+        docUploaded: "Document has been uploaded.",
+        attendanceNotFoundToday: "No attendance schedule today",
+        attendanceNotFoundDesc: "Today's schedule data is not available from the system.",
+        noSchedule: "No Schedule",
+        faceRequiredStatus: "Face Verification Required",
+        notCheckedIn: "Not Checked In",
+        notCheckedInFace: "You have not checked in (face required)",
+        notCheckedInTitle: "You have not checked in",
+        waitingTeacher: "Waiting for Teacher Validation",
+        checkInRecorded: "Check-in has been recorded",
+        completeToday: "Today's attendance is complete",
+        alreadyPresent: "Already Checked In ✓",
+        attendanceOpensAt: "Attendance opens at",
+        notOpened: "Not Opened",
+        morningLimitPassed: "Morning attendance limit has passed",
+        contactTeacher: "Contact the teacher for attendance recording.",
+        onlyMorning: "Student attendance is only for morning check-in",
+        emptyAction: "No attendance action",
+        submitMorningLeave: "Submit leave/sick for morning attendance",
+        leaveMorningOnly: "Leave/Sick is only available during morning attendance time.",
+        serverFetchFailed: "Failed to fetch attendance data.",
+        scheduleNotFound: "Schedule not found.",
+        faceDataInvalid: "Invalid face data. Please scan your face again.",
+        facePhotoRequired: "Face photo is required as attendance proof.",
+        noScheduleTodayToast: "No attendance schedule today.",
+        chooseScheduleFirst: "Please choose a schedule first.",
+        leaveUnavailable: "Leave/sick request is no longer available.",
+        requestSent: "Request submitted successfully.",
+        checkInSuccess: "Check-in successful.",
+        checkOutSuccess: "Check-out successful.",
+      }
+    : {
+        // ── BAHASA INDONESIA (diperbaiki: tidak ada referensi melingkar, tidak ada typo) ──
+        student: "Siswa",
+        errorDefault: "Terjadi kesalahan.",
+        faceInvalid: "Format foto wajah tidak valid.",
+        faceMime: "Format foto wajah harus JPG atau PNG.",
+        faceSize: "Ukuran foto wajah maksimal 2 MB.",
+        title: "Absensi Saya",
+        subtitle: "Halo",
+        subtitleEnd: "Pantau kehadiranmu di sini.",
+        applyLeave: "Ajukan Izin / Sakit",
+        today: "Hari Ini",
+        week: "Minggu Ini",
+        month: "Bulan Ini",
+        search: "Cari mata pelajaran, guru...",
+        allSubjects: "Semua Mapel",
+        allStatus: "Semua Status",
+        history: "Riwayat Kehadiran",
+        loading: "Memuat...",
+        records: "catatan",
+        noData: "Tidak ada data ditemukan",
+        progressTitle: "Progres Kehadiran Bulan Ini",
+        present: "Hadir",
+        late: "Terlambat",
+        leaveSick: "Izin / Sakit",
+        attendancePercent: "% Kehadiran",
+        date: "Tanggal",
+        day: "Hari",
+        subject: "Mata Pelajaran",
+        teacher: "Guru",
+        checkInTime: "Jam Masuk",
+        checkOutTime: "Jam Keluar",
+        status: "Status",
+        note: "Keterangan",
+        action: "Aksi",
+        process: "Memproses...",
+        checkInNow: "Absen Sekarang",
+        subjectDone: "Mapel Sudah Selesai",
+        noAction: "Tidak Ada Aksi",
+        finished: "Selesai ✓",
+        checkedIn: "Sudah Masuk",
+        limitPassed: "Batas Lewat",
+        morningOnly: "Hanya Pagi",
+        detail: "Lihat Detail",
+        checkIn: "Masuk",
+        checkOut: "Keluar",
+        detailTitle: "Detail Absensi",
+        close: "Tutup",
+        leaveTitle: "Ajukan Izin / Sakit",
+        absentDate: "Tanggal Tidak Hadir",
+        schedule: "Jadwal",
+        selectSchedule: "-- Pilih Jadwal --",
+        leaveWarning:
+          "⚠️ Izin/Sakit hanya tersedia untuk jadwal absen pagi dan sebelum batas terlambat.",
+        absenceType: "Jenis Ketidakhadiran",
+        leave: "Izin",
+        sick: "Sakit",
+        description: "Keterangan",
+        optional: "(opsional)",
+        sickPlaceholder: "Contoh: Demam dan tidak bisa mengikuti pelajaran",
+        leavePlaceholder: "Tuliskan alasan izin jika diperlukan...",
+        uploadSickLetter: "Upload Surat Sakit",
+        uploadSickHint: "Klik untuk upload surat sakit",
+        fileInfo: ".pdf / .jpg / .png — maks 2 MB",
+        cancel: "Batal",
+        sending: "Mengirim...",
+        submit: "Kirim Pengajuan",
+        supportingDoc: "Dokumen Pendukung",
+        docUploaded: "Dokumen sudah diunggah.",
+        attendanceNotFoundToday: "Belum ada jadwal absensi hari ini",
+        attendanceNotFoundDesc: "Data jadwal hari ini belum tersedia dari sistem.",
+        noSchedule: "Tidak Ada Jadwal",
+        faceRequiredStatus: "Wajib Verifikasi Wajah",
+        notCheckedIn: "Belum Absen",
+        notCheckedInFace: "Kamu belum absen masuk (wajib wajah)",
+        notCheckedInTitle: "Kamu belum absen masuk",
+        waitingTeacher: "Menunggu Validasi Guru",
+        checkInRecorded: "Absen masuk sudah tercatat",
+        completeToday: "Absensi lengkap hari ini",
+        alreadyPresent: "Sudah Absen ✓",
+        attendanceOpensAt: "Absensi dibuka pukul",
+        notOpened: "Belum Dibuka",
+        morningLimitPassed: "Batas absen pagi sudah lewat",
+        contactTeacher: "Hubungi guru untuk pencatatan absensi.",
+        onlyMorning: "Absensi siswa hanya untuk jam masuk pagi",
+        emptyAction: "Tidak ada aksi absensi",
+        submitMorningLeave: "Ajukan izin/sakit untuk absen pagi",
+        leaveMorningOnly: "Izin/Sakit hanya tersedia pada jam absen pagi.",
+        serverFetchFailed: "Gagal mengambil data absensi.",
+        scheduleNotFound: "Jadwal tidak ditemukan.",
+        faceDataInvalid: "Data wajah tidak valid. Silakan ulangi scan wajah.",
+        facePhotoRequired: "Foto wajah wajib dikirim sebagai bukti absensi.",
+        noScheduleTodayToast: "Tidak ada jadwal absensi hari ini.",
+        chooseScheduleFirst: "Pilih jadwal yang ingin diizinkan terlebih dahulu.",
+        leaveUnavailable: "Pengajuan izin/sakit sudah tidak tersedia.",
+        requestSent: "Pengajuan berhasil dikirim.",
+        checkInSuccess: "Absen masuk berhasil.",
+        checkOutSuccess: "Absen keluar berhasil.",
+      },
+);
 
 const ABSENSI_API = "/api/absensi";
 
@@ -136,13 +323,9 @@ const skeletonPills = Array.from({ length: 3 }, (_, i) => i);
 
 const showPageSkeleton = computed(() => loadingPage.value && attendanceRecords.value.length === 0);
 
-// FIX #2: 1 detik karena nowHms() pakai detik untuk perbandingan window absen
 const nowTime = ref(new Date());
 let clockInterval = null;
-
-// FIX #5: AbortController untuk cegah race condition saat ganti tab cepat
 const abortController = ref(null);
-
 const serverTodayDate = ref(localTodayYmd());
 
 // ============================================================================
@@ -150,8 +333,6 @@ const serverTodayDate = ref(localTodayYmd());
 // ============================================================================
 onMounted(() => {
   fetchAbsensi();
-
-  // FIX #2: interval 1 detik agar nowHms() akurat untuk cek window absen
   clockInterval = setInterval(() => {
     nowTime.value = new Date();
   }, 1_000);
@@ -159,7 +340,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (clockInterval) clearInterval(clockInterval);
-  // FIX #5: batalkan request yang masih pending saat komponen di-unmount
   if (abortController.value) abortController.value.abort();
 });
 
@@ -167,7 +347,7 @@ onUnmounted(() => {
 // WAKTU & TANGGAL HELPERS
 // ============================================================================
 const today = computed(() =>
-  nowTime.value.toLocaleDateString("id-ID", {
+  nowTime.value.toLocaleDateString(isEn.value ? "en-US" : "id-ID", {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -209,7 +389,11 @@ function formatTanggal(dateStr) {
   const [year, month, day] = cleanDate.split("-");
   if (!year || !month || !day) return "—";
   const d = new Date(Number(year), Number(month) - 1, Number(day));
-  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+  return d.toLocaleDateString(isEn.value ? "en-US" : "id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function getHari(dateStr) {
@@ -218,7 +402,7 @@ function getHari(dateStr) {
   const [year, month, day] = cleanDate.split("-");
   if (!year || !month || !day) return "—";
   const d = new Date(Number(year), Number(month) - 1, Number(day));
-  return d.toLocaleDateString("id-ID", { weekday: "long" });
+  return d.toLocaleDateString(isEn.value ? "en-US" : "id-ID", { weekday: "long" });
 }
 
 function ucfirst(str) {
@@ -248,7 +432,7 @@ function cleanName(value) {
 const userDisplayName = computed(() => {
   const siswaName = cleanName(currentSiswa.value?.nama_lengkap ?? currentSiswa.value?.nama);
   const authName = cleanName(authStore.user?.name);
-  return siswaName || authName || "Siswa";
+  return siswaName || authName || uiText.value.student;
 });
 
 // ============================================================================
@@ -281,11 +465,9 @@ function backendStatusToUi(status) {
 function getStatusClass(status) {
   return statusConfig[status]?.cls ?? "badge-alfa";
 }
-
 function getStatusDot(status) {
   return statusConfig[status]?.dot ?? "#dc2626";
 }
-
 function recordKey(record) {
   return record.id ?? `jadwal-${record.jadwal_id}`;
 }
@@ -295,7 +477,6 @@ function mapAbsensi(item) {
   const jamJadwalMulai = displayTime(item.jam_jadwal_mulai ?? jadwal.jam_mulai);
   const jamJadwalSelesai = displayTime(item.jam_jadwal_selesai ?? jadwal.jam_selesai);
   const actionText = item.action_text ?? "Tidak Ada Aksi";
-
   return {
     id: item.id,
     siswa_id: item.siswa_id,
@@ -338,39 +519,27 @@ function mapAbsensi(item) {
 // FETCH ABSENSI
 // ============================================================================
 async function fetchAbsensi() {
-  // FIX #5: abort request sebelumnya agar tidak race condition
   if (abortController.value) abortController.value.abort();
   abortController.value = new AbortController();
-
   try {
     loadingPage.value = true;
-
     const res = await api.get(ABSENSI_API, {
       params: { range: activeTab.value },
-      signal: abortController.value.signal, // FIX #5
+      signal: abortController.value.signal,
     });
-
-    if (res.data.meta?.tanggal_hari_ini) {
-      serverTodayDate.value = res.data.meta.tanggal_hari_ini;
-    }
-
-    if (res.data.meta?.siswa) {
-      currentSiswa.value = res.data.meta.siswa;
-    }
-
+    if (res.data.meta?.tanggal_hari_ini) serverTodayDate.value = res.data.meta.tanggal_hari_ini;
+    if (res.data.meta?.siswa) currentSiswa.value = res.data.meta.siswa;
     const rows = Array.isArray(res.data.data) ? res.data.data : [];
     attendanceRecords.value = rows.map(mapAbsensi);
   } catch (error) {
-    // FIX #5: abaikan error dari abort yang disengaja
     if (error.name === "CanceledError") return;
     console.error("[Absensi] Gagal fetch:", error);
-    showToast("error", error.response?.data?.message || "Gagal mengambil data absensi.");
+    showToast("error", error.response?.data?.message || uiText.value.serverFetchFailed);
   } finally {
     loadingPage.value = false;
   }
 }
 
-// Re-fetch saat tab berganti
 watch(activeTab, () => fetchAbsensi());
 
 // ============================================================================
@@ -384,7 +553,6 @@ const izinForm = ref({
   jadwal_id: null,
 });
 
-// Bersihkan file jika jenis bukan sakit
 watch(
   () => izinForm.value.jenis,
   (jenis) => {
@@ -392,7 +560,6 @@ watch(
   },
 );
 
-// Reset jadwal_id jika tanggal berubah
 watch(
   () => izinForm.value.tanggal,
   () => {
@@ -400,11 +567,8 @@ watch(
   },
 );
 
-// FIX #1: sync izinForm.tanggal jika hari berganti (misal halaman dibuka semalam)
 watch(serverTodayDate, (newDate) => {
-  if (izinForm.value.tanggal === localTodayYmd()) {
-    izinForm.value.tanggal = newDate;
-  }
+  if (izinForm.value.tanggal === localTodayYmd()) izinForm.value.tanggal = newDate;
 });
 
 // ============================================================================
@@ -419,7 +583,6 @@ function canCheckIn(record) {
   );
 }
 
-// Absen keluar dikelola guru/admin — siswa tidak bisa melakukan dari sini
 function canCheckOut() {
   return false;
 }
@@ -428,17 +591,13 @@ function isStudentMorningWindowOpen(record) {
   if (!record) return false;
   if (!isTodayDate(record.tanggal)) return false;
   if (!record.isFirstMapel || record.isMapelSelesai) return false;
-
   const start = normalizeHms(
     record.jamBukaAbsensi !== "—" ? record.jamBukaAbsensi : record.jamJadwalMulai,
   );
   const end = normalizeHms(
     record.batasTerlambat !== "—" ? record.batasTerlambat : record.jamTutupAbsensi,
   );
-
-  // Fallback ke flag backend jika jam tidak tersedia
   if (!start || !end) return Boolean(record.canIzinSakit);
-
   const jamSekarang = nowHms();
   return jamSekarang >= start && jamSekarang <= end;
 }
@@ -479,7 +638,7 @@ const persenHadir = computed(() => {
 
 const stats = computed(() => [
   {
-    label: "Hadir",
+    label: uiText.value.present,
     value: totalHadir.value,
     suffix: "",
     color: "#16a34a",
@@ -487,7 +646,7 @@ const stats = computed(() => [
     icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>`,
   },
   {
-    label: "Terlambat",
+    label: uiText.value.late,
     value: totalTerlambat.value,
     suffix: "",
     color: "#9333ea",
@@ -495,7 +654,7 @@ const stats = computed(() => [
     icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/>`,
   },
   {
-    label: "Izin / Sakit",
+    label: uiText.value.leaveSick,
     value: totalIzinSakit.value,
     suffix: "",
     color: "#d97706",
@@ -503,7 +662,7 @@ const stats = computed(() => [
     icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/>`,
   },
   {
-    label: "% Kehadiran",
+    label: uiText.value.attendancePercent,
     value: persenHadir.value,
     suffix: "%",
     color: "#2563eb",
@@ -528,7 +687,6 @@ const filteredRecords = computed(() => {
         r.hari.toLowerCase().includes(search);
       const matchStatus = !filterStatus.value || r.status === filterStatus.value;
       const matchMatpel = !filterMatpel.value || r.matpel === filterMatpel.value;
-
       let matchTab = true;
       if (activeTab.value === "hari") {
         matchTab = isTodayDate(r.tanggal);
@@ -549,7 +707,6 @@ const filteredRecords = computed(() => {
           recordDate.getMonth() === now.getMonth() &&
           recordDate.getFullYear() === now.getFullYear();
       }
-
       return matchSearch && matchStatus && matchMatpel && matchTab;
     })
     .sort((a, b) => {
@@ -564,13 +721,10 @@ const todayRecords = computed(() =>
     .sort((a, b) => (a.jamJadwalMulai || "").localeCompare(b.jamJadwalMulai || "")),
 );
 
-// FIX #4: pakai HH:mm saja untuk perbandingan agar konsisten dengan displayTime()
 const activeTodayRecord = computed(() => {
-  const jamHm = nowHms().slice(0, 5); // HH:mm
-
+  const jamHm = nowHms().slice(0, 5);
   const bisaMasuk = todayRecords.value.find((r) => canCheckIn(r));
   if (bisaMasuk) return bisaMasuk;
-
   const sedangBerlangsung = todayRecords.value.find(
     (r) =>
       r.jamJadwalMulai !== "—" &&
@@ -579,12 +733,10 @@ const activeTodayRecord = computed(() => {
       jamHm <= r.jamJadwalSelesai,
   );
   if (sedangBerlangsung) return sedangBerlangsung;
-
   const berikutnya = todayRecords.value.find(
     (r) => r.jamJadwalMulai !== "—" && jamHm < r.jamJadwalMulai,
   );
   if (berikutnya) return berikutnya;
-
   return todayRecords.value[0] ?? null;
 });
 
@@ -594,9 +746,9 @@ const activeTodayRecord = computed(() => {
 const headerIzinRecord = computed(() => todayRecords.value.find((r) => canAjukanIzin(r)) ?? null);
 const isHeaderIzinDisabled = computed(() => !headerIzinRecord.value || loadingIzin.value);
 const headerIzinTitle = computed(() => {
-  if (headerIzinRecord.value) return "Ajukan izin/sakit untuk absen pagi";
+  if (headerIzinRecord.value) return uiText.value.submitMorningLeave;
   const firstToday = todayRecords.value.find((r) => r.isFirstMapel) ?? todayRecords.value[0];
-  return firstToday?.actionText || "Izin/Sakit hanya tersedia pada jam absen pagi.";
+  return firstToday?.actionText || uiText.value.leaveMorningOnly;
 });
 
 const todayJadwalOptions = computed(() => {
@@ -614,18 +766,13 @@ const izinSubmitDisabled = computed(() => {
   if (loadingIzin.value) return true;
   if (!izinForm.value.tanggal) return true;
   if (!izinForm.value.jadwal_id) return true;
-
   const selected = attendanceRecords.value.find(
     (r) =>
       Number(r.jadwal_id) === Number(izinForm.value.jadwal_id) &&
       r.tanggal === izinForm.value.tanggal,
   );
   if (!canAjukanIzin(selected)) return true;
-
-  if (izinForm.value.jenis === "sakit") {
-    return !izinForm.value.keterangan || !izinForm.value.file;
-  }
-
+  if (izinForm.value.jenis === "sakit") return !izinForm.value.keterangan || !izinForm.value.file;
   return false;
 });
 
@@ -634,38 +781,31 @@ const izinSubmitDisabled = computed(() => {
 // ============================================================================
 const todayAttendanceInfo = computed(() => {
   const record = activeTodayRecord.value;
-
   if (!record) {
     return {
-      title: "Belum ada jadwal absensi hari ini",
-      desc: "Data jadwal hari ini belum tersedia dari sistem.",
-      status: "Tidak Ada Jadwal",
+      title: uiText.value.attendanceNotFoundToday,
+      desc: uiText.value.attendanceNotFoundDesc,
+      status: uiText.value.noSchedule,
       statusType: "none",
     };
   }
-
   const mapelInfo = `${record.matpel} bersama ${record.guru} • ${record.jamJadwalMulai} – ${record.jamJadwalSelesai}`;
-
   if (record.canAbsenMasuk) {
     return {
-      title: record.faceRequired
-        ? "Kamu belum absen masuk (wajib wajah)"
-        : "Kamu belum absen masuk",
+      title: record.faceRequired ? uiText.value.notCheckedInFace : uiText.value.notCheckedInTitle,
       desc: mapelInfo,
-      status: record.faceRequired ? "Wajib Verifikasi Wajah" : "Belum Absen",
+      status: record.faceRequired ? uiText.value.faceRequiredStatus : uiText.value.notCheckedIn,
       statusType: "warning",
     };
   }
-
   if (record.canAbsenKeluar) {
     return {
-      title: "Absen masuk sudah tercatat",
+      title: uiText.value.checkInRecorded,
       desc: `${mapelInfo} • Jam keluar dikelola oleh guru.`,
-      status: "Menunggu Validasi Guru",
+      status: uiText.value.waitingTeacher,
       statusType: "info",
     };
   }
-
   if (record.isMapelSelesai && record.jamMasuk === "—") {
     return {
       title: "Mapel sudah selesai",
@@ -674,13 +814,12 @@ const todayAttendanceInfo = computed(() => {
       statusType: "danger",
     };
   }
-
   if (record.status === "Hadir" || record.status === "Terlambat") {
     if (record.jamKeluar !== "—") {
       return {
-        title: "Absensi lengkap hari ini",
+        title: uiText.value.completeToday,
         desc: mapelInfo,
-        status: "Sudah Absen ✓",
+        status: uiText.value.alreadyPresent,
         statusType: "success",
       };
     }
@@ -691,7 +830,6 @@ const todayAttendanceInfo = computed(() => {
       statusType: "success",
     };
   }
-
   if (record.status === "Izin" || record.status === "Sakit") {
     return {
       title: `${record.status} Tercatat`,
@@ -700,36 +838,32 @@ const todayAttendanceInfo = computed(() => {
       statusType: "info",
     };
   }
-
   if (record.actionState === "belum_dibuka") {
     return {
-      title: `Absensi dibuka pukul ${record.jamBukaAbsensi}`,
+      title: `${uiText.value.attendanceOpensAt} ${record.jamBukaAbsensi}`,
       desc: mapelInfo,
-      status: "Belum Dibuka",
+      status: uiText.value.notOpened,
       statusType: "idle",
     };
   }
-
   if (record.actionState === "lewat_batas_absen") {
     return {
-      title: "Batas absen pagi sudah lewat",
-      desc: `${mapelInfo} • Hubungi guru untuk pencatatan absensi.`,
-      status: "Batas Absen Lewat",
+      title: uiText.value.morningLimitPassed,
+      desc: `${mapelInfo} • ${uiText.value.contactTeacher}`,
+      status: uiText.value.limitPassed,
       statusType: "danger",
     };
   }
-
   if (record.actionState === "hanya_absen_pagi") {
     return {
-      title: "Absensi siswa hanya untuk jam masuk pagi",
+      title: uiText.value.onlyMorning,
       desc: mapelInfo,
-      status: "Tidak Ada Aksi",
+      status: uiText.value.noAction,
       statusType: "idle",
     };
   }
-
   return {
-    title: record.actionText || "Tidak ada aksi absensi",
+    title: record.actionText || uiText.value.emptyAction,
     desc: mapelInfo,
     status: record.status,
     statusType: "none",
@@ -749,74 +883,55 @@ function isValidFaceDescriptor(descriptor) {
 
 async function absenMasuk(record) {
   if (!record?.jadwal_id) {
-    showToast("warning", "Jadwal tidak ditemukan.");
+    showToast("warning", uiText.value.scheduleNotFound);
     return;
   }
-
-  if (loadingActionKey.value) {
-    return;
-  }
-
+  if (loadingActionKey.value) return;
   if (record.faceRequired) {
     pendingFaceRecord.value = record;
     showFaceModal.value = true;
     return;
   }
-
   await submitAbsenMasuk(record);
 }
 
 async function submitAbsenMasuk(record, facePayload = null) {
   if (!record?.jadwal_id) {
-    showToast("warning", "Jadwal tidak ditemukan.");
+    showToast("warning", uiText.value.scheduleNotFound);
     return;
   }
-
-  if (loadingActionKey.value) {
-    return;
-  }
-
+  if (loadingActionKey.value) return;
   try {
     loadingActionKey.value = recordKey(record);
-
     if (record.faceRequired) {
       if (!isValidFaceDescriptor(facePayload?.descriptor)) {
-        showToast("warning", "Data wajah tidak valid. Silakan ulangi scan wajah.");
+        showToast("warning", uiText.value.faceDataInvalid);
         return;
       }
-
       if (!facePayload?.photoBase64) {
-        showToast("warning", "Foto wajah wajib dikirim sebagai bukti absensi.");
+        showToast("warning", uiText.value.facePhotoRequired);
         return;
       }
     }
-
     const formData = new FormData();
     formData.append("jadwal_id", record.jadwal_id);
-
     if (isValidFaceDescriptor(facePayload?.descriptor)) {
       facePayload.descriptor.forEach((value, index) => {
         formData.append(`face_descriptor[${index}]`, Number(value));
       });
     }
-
     if (facePayload?.photoBase64) {
       const faceFile = base64ToFile(facePayload.photoBase64);
       formData.append("face_image", faceFile);
     }
-
-    // Jangan kirim siswa_id atau kelas_id dari frontend.
-    // Backend wajib mengambil siswa dan kelas dari user yang sedang login.
     const res = await api.post(`${ABSENSI_API}/masuk`, formData);
-
-    showToast("success", res.data.message || "Absen masuk berhasil.");
+    showToast("success", res.data.message || uiText.value.checkInSuccess);
     await fetchAbsensi();
   } catch (error) {
     if (error instanceof Error && !error.response) {
       showToast("error", error.message || "Gagal memproses data wajah.");
       return;
     }
-
     showAbsensiAlert(error);
   } finally {
     loadingActionKey.value = null;
@@ -827,21 +942,15 @@ async function submitAbsenMasuk(record, facePayload = null) {
 
 async function handleFaceVerified(descriptor, photoBase64) {
   const record = pendingFaceRecord.value;
-
   if (!record) {
     showToast("warning", "Data jadwal absen tidak ditemukan.");
     return;
   }
-
   if (!isValidFaceDescriptor(descriptor)) {
-    showToast("warning", "Data wajah tidak valid. Silakan ulangi scan wajah.");
+    showToast("warning", uiText.value.faceDataInvalid);
     return;
   }
-
-  await submitAbsenMasuk(record, {
-    descriptor,
-    photoBase64,
-  });
+  await submitAbsenMasuk(record, { descriptor, photoBase64 });
 }
 
 function handleFaceModalClose() {
@@ -852,32 +961,27 @@ function handleFaceModalClose() {
 function handleFaceSkip() {
   const record = pendingFaceRecord.value;
   showFaceModal.value = false;
-
   if (!record) {
     showToast("warning", "Data jadwal absen tidak ditemukan.");
     return;
   }
-
   if (record.faceRequired) {
     showToast("warning", "Verifikasi wajah wajib dilakukan untuk absen masuk.");
     pendingFaceRecord.value = null;
     return;
   }
-
   submitAbsenMasuk(record);
 }
 
 async function absenKeluar(record) {
   if (!record?.jadwal_id) {
-    showToast("warning", "Jadwal tidak ditemukan.");
+    showToast("warning", uiText.value.scheduleNotFound);
     return;
   }
   try {
     loadingActionKey.value = recordKey(record);
-    const res = await api.post(`${ABSENSI_API}/keluar`, {
-      jadwal_id: record.jadwal_id,
-    });
-    showToast("success", res.data.message || "Absen keluar berhasil.");
+    const res = await api.post(`${ABSENSI_API}/keluar`, { jadwal_id: record.jadwal_id });
+    showToast("success", res.data.message || uiText.value.checkOutSuccess);
     await fetchAbsensi();
   } catch (error) {
     showAbsensiAlert(error);
@@ -888,7 +992,7 @@ async function absenKeluar(record) {
 
 async function absenMasukHariIni() {
   if (!activeTodayRecord.value) {
-    showToast("warning", "Tidak ada jadwal absensi hari ini.");
+    showToast("warning", uiText.value.noScheduleTodayToast);
     return;
   }
   await absenMasuk(activeTodayRecord.value);
@@ -905,7 +1009,6 @@ function openDetail(record) {
 
 function openIzin(record = null) {
   const targetRecord = record ?? headerIzinRecord.value;
-
   if (!canAjukanIzin(targetRecord)) {
     showToast(
       "warning",
@@ -913,7 +1016,6 @@ function openIzin(record = null) {
     );
     return;
   }
-
   izinForm.value = {
     tanggal: targetRecord.tanggal ?? serverTodayDate.value,
     jenis: "izin",
@@ -921,7 +1023,6 @@ function openIzin(record = null) {
     file: null,
     jadwal_id: targetRecord.jadwal_id ?? null,
   };
-
   modalMode.value = "izin";
   showModal.value = true;
 }
@@ -929,7 +1030,6 @@ function openIzin(record = null) {
 function closeModal() {
   showModal.value = false;
 }
-
 function handleFileUpload(e) {
   izinForm.value.file = e.target.files?.[0] ?? null;
 }
@@ -939,45 +1039,32 @@ function handleFileUpload(e) {
 // ============================================================================
 async function submitIzin() {
   if (!izinForm.value.jadwal_id) {
-    showToast("warning", "Pilih jadwal yang ingin diizinkan terlebih dahulu.");
+    showToast("warning", uiText.value.chooseScheduleFirst);
     return;
   }
-
   const selected = attendanceRecords.value.find(
     (r) =>
       Number(r.jadwal_id) === Number(izinForm.value.jadwal_id) &&
       r.tanggal === izinForm.value.tanggal,
   );
-
   if (!canAjukanIzin(selected)) {
-    showToast("warning", selected?.actionText || "Pengajuan izin/sakit sudah tidak tersedia.");
+    showToast("warning", selected?.actionText || uiText.value.leaveUnavailable);
     return;
   }
-
   try {
     loadingIzin.value = true;
-
     const formData = new FormData();
     formData.append("tanggal", izinForm.value.tanggal);
     formData.append("status", izinForm.value.jenis);
     formData.append("jadwal_id", izinForm.value.jadwal_id);
-
-    if (izinForm.value.keterangan) {
-      formData.append("keterangan", izinForm.value.keterangan);
-    }
-
-    if (izinForm.value.jenis === "sakit" && izinForm.value.file) {
+    if (izinForm.value.keterangan) formData.append("keterangan", izinForm.value.keterangan);
+    if (izinForm.value.jenis === "sakit" && izinForm.value.file)
       formData.append("dokumen_pendukung", izinForm.value.file);
-    }
-
     const res = await api.post(`${ABSENSI_API}/status`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
-
-    showToast("success", res.data.message || "Pengajuan berhasil dikirim.");
+    showToast("success", res.data.message || uiText.value.requestSent);
     closeModal();
-
-    // FIX #6: reset form dan input file setelah submit berhasil
     izinForm.value = {
       tanggal: serverTodayDate.value,
       jenis: "izin",
@@ -986,7 +1073,6 @@ async function submitIzin() {
       jadwal_id: null,
     };
     if (fileInput.value) fileInput.value.value = "";
-
     await fetchAbsensi();
   } catch (error) {
     showAbsensiAlert(error);
@@ -997,7 +1083,7 @@ async function submitIzin() {
 </script>
 
 <template>
-  <div class="layout-root">
+  <div class="layout-root" :data-theme="pageTheme">
     <Sidebar :open="sidebarOpen" @close="sidebarOpen = false" />
 
     <div class="layout-main">
@@ -1012,8 +1098,10 @@ async function submitIzin() {
           </div>
 
           <div v-else>
-            <h1 class="dash-title">Absensi Saya</h1>
-            <p class="dash-sub">Halo, {{ userDisplayName }} 👋 — Pantau kehadiranmu di sini.</p>
+            <h1 class="dash-title">{{ uiText.title }}</h1>
+            <p class="dash-sub">
+              {{ uiText.subtitle }}, {{ userDisplayName }} 👋 — {{ uiText.subtitleEnd }}
+            </p>
           </div>
 
           <div class="header-right">
@@ -1033,7 +1121,7 @@ async function submitIzin() {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
                 </svg>
-                Ajukan Izin / Sakit
+                {{ uiText.applyLeave }}
               </button>
             </template>
           </div>
@@ -1043,11 +1131,9 @@ async function submitIzin() {
         <div v-if="showPageSkeleton" class="today-absen-card today-skeleton-card">
           <div class="today-absen-left">
             <div class="skel skel-today-icon"></div>
-
             <div class="today-skeleton-content">
               <div class="skel skel-today-title"></div>
               <div class="skel skel-today-desc"></div>
-
               <div class="today-mapel-pills">
                 <span
                   v-for="n in skeletonPills"
@@ -1055,11 +1141,9 @@ async function submitIzin() {
                   class="skel skel-pill"
                 ></span>
               </div>
-
               <div class="skel skel-status-pill"></div>
             </div>
           </div>
-
           <div class="skel skel-today-btn"></div>
         </div>
 
@@ -1108,7 +1192,6 @@ async function submitIzin() {
                 >
                   {{ record.matpel }}
                 </span>
-
                 <span v-if="todayRecords.length > 3" class="mapel-pill">
                   +{{ todayRecords.length - 3 }} mapel
                 </span>
@@ -1147,8 +1230,8 @@ async function submitIzin() {
               </svg>
               {{
                 loadingActionKey === recordKey(activeTodayRecord)
-                  ? "Memproses..."
-                  : "Absen Masuk Sekarang"
+                  ? uiText.process
+                  : uiText.checkInNow
               }}
             </button>
 
@@ -1169,7 +1252,7 @@ async function submitIzin() {
                 {{ todayAttendanceInfo.status }}
               </span>
               <span v-else class="chip chip--idle">
-                {{ activeTodayRecord?.actionText || "Tidak Ada Aksi" }}
+                {{ activeTodayRecord?.actionText || uiText.noAction }}
               </span>
             </div>
           </div>
@@ -1222,9 +1305,7 @@ async function submitIzin() {
               <div class="skel skel-progress-title"></div>
               <div class="skel skel-progress-percent"></div>
             </div>
-
             <div class="skel skel-progress-track"></div>
-
             <div class="progress-legend">
               <span v-for="n in 4" :key="`legend-sk-${n}`" class="skel skel-legend"></span>
             </div>
@@ -1232,7 +1313,7 @@ async function submitIzin() {
 
           <template v-else>
             <div class="progress-header">
-              <span class="progress-title">Progres Kehadiran Bulan Ini</span>
+              <span class="progress-title">{{ uiText.progressTitle }}</span>
               <span
                 class="progress-pct"
                 :style="{ color: persenHadir >= 80 ? '#16a34a' : '#dc2626' }"
@@ -1250,18 +1331,18 @@ async function submitIzin() {
               />
             </div>
             <div class="progress-legend">
-              <span class="legend-item"
-                ><span class="legend-dot" style="background: #16a34a"></span>Hadir</span
-              >
-              <span class="legend-item"
-                ><span class="legend-dot" style="background: #9333ea"></span>Terlambat</span
-              >
-              <span class="legend-item"
-                ><span class="legend-dot" style="background: #d97706"></span>Izin/Sakit</span
-              >
-              <span class="legend-item"
-                ><span class="legend-dot" style="background: #dc2626"></span>Alfa</span
-              >
+              <span class="legend-item">
+                <span class="legend-dot" style="background: #16a34a"></span>Hadir
+              </span>
+              <span class="legend-item">
+                <span class="legend-dot" style="background: #9333ea"></span>Terlambat
+              </span>
+              <span class="legend-item">
+                <span class="legend-dot" style="background: #d97706"></span>Izin/Sakit
+              </span>
+              <span class="legend-item">
+                <span class="legend-dot" style="background: #dc2626"></span>Alfa
+              </span>
             </div>
           </template>
         </div>
@@ -1270,7 +1351,6 @@ async function submitIzin() {
         <div class="toolbar">
           <template v-if="showPageSkeleton">
             <div class="skel skel-tabs"></div>
-
             <div class="filter-group">
               <div class="skel skel-search"></div>
               <div class="skel skel-select"></div>
@@ -1282,9 +1362,9 @@ async function submitIzin() {
             <div class="tab-bar">
               <button
                 v-for="t in [
-                  { key: 'hari', label: 'Hari Ini' },
-                  { key: 'minggu', label: 'Minggu Ini' },
-                  { key: 'bulan', label: 'Bulan Ini' },
+                  { key: 'hari', label: uiText.today },
+                  { key: 'minggu', label: uiText.week },
+                  { key: 'bulan', label: uiText.month },
                 ]"
                 :key="t.key"
                 class="tab"
@@ -1314,17 +1394,17 @@ async function submitIzin() {
                   v-model="searchQuery"
                   class="search-input"
                   type="text"
-                  placeholder="Cari mata pelajaran, guru..."
+                  :placeholder="uiText.search"
                 />
               </div>
 
               <select v-model="filterMatpel" class="filter-select">
-                <option value="">Semua Mapel</option>
+                <option value="">{{ uiText.allSubjects }}</option>
                 <option v-for="m in matpelOptions" :key="m" :value="m">{{ m }}</option>
               </select>
 
               <select v-model="filterStatus" class="filter-select">
-                <option value="">Semua Status</option>
+                <option value="">{{ uiText.allStatus }}</option>
                 <option>Hadir</option>
                 <option>Terlambat</option>
                 <option>Izin</option>
@@ -1338,9 +1418,9 @@ async function submitIzin() {
         <!-- ── Table ── -->
         <div class="table-card">
           <div class="table-head-bar">
-            <h3 class="table-title">Riwayat Kehadiran</h3>
+            <h3 class="table-title">{{ uiText.history }}</h3>
             <span class="rec-badge">
-              {{ loadingPage ? "Memuat..." : `${filteredRecords.length} catatan` }}
+              {{ loadingPage ? uiText.loading : `${filteredRecords.length} ${uiText.records}` }}
             </span>
           </div>
 
@@ -1348,20 +1428,19 @@ async function submitIzin() {
             <table>
               <thead>
                 <tr>
-                  <th>Tanggal</th>
-                  <th>Hari</th>
-                  <th>Mata Pelajaran</th>
-                  <th>Guru</th>
-                  <th>Jam Masuk</th>
-                  <th>Jam Keluar</th>
-                  <th>Status</th>
-                  <th>Keterangan</th>
-                  <th>Aksi</th>
+                  <th>{{ uiText.date }}</th>
+                  <th>{{ uiText.day }}</th>
+                  <th>{{ uiText.subject }}</th>
+                  <th>{{ uiText.teacher }}</th>
+                  <th>{{ uiText.checkInTime }}</th>
+                  <th>{{ uiText.checkOutTime }}</th>
+                  <th>{{ uiText.status }}</th>
+                  <th>{{ uiText.note }}</th>
+                  <th>{{ uiText.action }}</th>
                 </tr>
               </thead>
 
               <tbody>
-                <!-- ── SKELETON ROWS ── -->
                 <template v-if="loadingPage">
                   <tr v-for="n in 6" :key="`sk-${n}`" class="skeleton-row">
                     <td><div class="skel skel-date"></div></td>
@@ -1384,16 +1463,15 @@ async function submitIzin() {
                   </tr>
                 </template>
 
-                <!-- ── DATA ROWS ── -->
                 <template v-else>
                   <tr v-for="record in filteredRecords" :key="recordKey(record)" class="table-row">
                     <td class="td-date">{{ formatTanggal(record.tanggal) }}</td>
                     <td class="td-hari">{{ record.hari }}</td>
                     <td class="td-mapel">
                       <div>{{ record.matpel }}</div>
-                      <small class="jadwal-jam"
-                        >{{ record.jamJadwalMulai }} – {{ record.jamJadwalSelesai }}</small
-                      >
+                      <small class="jadwal-jam">
+                        {{ record.jamJadwalMulai }} – {{ record.jamJadwalSelesai }}
+                      </small>
                     </td>
                     <td class="td-guru">{{ record.guru }}</td>
                     <td class="td-jam">{{ record.jamMasuk }}</td>
@@ -1409,18 +1487,15 @@ async function submitIzin() {
                     </td>
                     <td class="td-ket">{{ record.keterangan }}</td>
 
-                    <!-- ✅ KOLOM AKSI — REDESIGN dengan Action Group compact -->
                     <td class="td-aksi">
                       <div class="action-group">
-                        <!-- [A] Ada aksi absen aktif → tampilkan tombol utama + ikon secondary -->
                         <template v-if="canCheckIn(record) || canCheckOut(record)">
-                          <!-- Tombol utama: Absen Masuk atau Keluar -->
                           <button
                             v-if="canCheckIn(record)"
                             class="btn-action btn-action--masuk"
                             @click="absenMasuk(record)"
                             :disabled="loadingActionKey === recordKey(record)"
-                            title="Absen Masuk"
+                            :title="uiText.checkIn"
                           >
                             <svg
                               viewBox="0 0 24 24"
@@ -1435,7 +1510,7 @@ async function submitIzin() {
                               />
                             </svg>
                             <span>{{
-                              loadingActionKey === recordKey(record) ? "..." : "Masuk"
+                              loadingActionKey === recordKey(record) ? "..." : uiText.checkIn
                             }}</span>
                           </button>
 
@@ -1444,7 +1519,7 @@ async function submitIzin() {
                             class="btn-action btn-action--keluar"
                             @click="absenKeluar(record)"
                             :disabled="loadingActionKey === recordKey(record)"
-                            title="Absen Keluar"
+                            :title="uiText.checkOut"
                           >
                             <svg
                               viewBox="0 0 24 24"
@@ -1459,17 +1534,16 @@ async function submitIzin() {
                               />
                             </svg>
                             <span>{{
-                              loadingActionKey === recordKey(record) ? "..." : "Keluar"
+                              loadingActionKey === recordKey(record) ? "..." : uiText.checkOut
                             }}</span>
                           </button>
 
-                          <!-- Ikon Izin (hanya muncul jika bisa izin + bisa masuk) -->
                           <button
                             v-if="canCheckIn(record) && canAjukanIzin(record)"
                             class="btn-icon btn-icon--izin"
                             @click="openIzin(record)"
                             :disabled="loadingIzin"
-                            title="Ajukan Izin / Sakit"
+                            :title="uiText.applyLeave"
                           >
                             <svg
                               viewBox="0 0 24 24"
@@ -1485,11 +1559,10 @@ async function submitIzin() {
                             </svg>
                           </button>
 
-                          <!-- Ikon Detail -->
                           <button
                             class="btn-icon btn-icon--detail"
                             @click="openDetail(record)"
-                            title="Lihat Detail"
+                            :title="uiText.detail"
                           >
                             <svg
                               viewBox="0 0 24 24"
@@ -1511,23 +1584,22 @@ async function submitIzin() {
                           </button>
                         </template>
 
-                        <!-- [B] Tidak ada aksi aktif → tampilkan chip status + ikon detail -->
                         <template v-else>
                           <template v-if="isTodayDate(record.tanggal)">
                             <span
                               v-if="record.isMapelSelesai && record.jamMasuk === '—'"
                               class="status-chip status-chip--danger"
-                              >Mapel Selesai</span
+                              >{{ uiText.subjectDone }}</span
                             >
                             <span
                               v-else-if="record.jamMasuk !== '—' && record.jamKeluar !== '—'"
                               class="status-chip status-chip--success"
-                              >Selesai ✓</span
+                              >{{ uiText.finished }}</span
                             >
                             <span
                               v-else-if="record.jamMasuk !== '—' && record.isMapelSelesai"
                               class="status-chip status-chip--warning"
-                              >Sudah Masuk</span
+                              >{{ uiText.checkedIn }}</span
                             >
                             <span
                               v-else-if="['Izin', 'Sakit'].includes(record.status)"
@@ -1556,24 +1628,23 @@ async function submitIzin() {
                             <span
                               v-else-if="record.actionState === 'lewat_batas_absen'"
                               class="status-chip status-chip--danger"
-                              >Batas Lewat</span
+                              >{{ uiText.limitPassed }}</span
                             >
                             <span
                               v-else-if="record.actionState === 'hanya_absen_pagi'"
                               class="status-chip status-chip--idle"
-                              >Hanya Pagi</span
+                              >{{ uiText.morningOnly }}</span
                             >
-                            <span v-else class="status-chip status-chip--idle">{{
-                              record.actionText || "—"
-                            }}</span>
+                            <span v-else class="status-chip status-chip--idle">
+                              {{ record.actionText || "—" }}
+                            </span>
                           </template>
                           <span v-else class="status-chip status-chip--idle">—</span>
 
-                          <!-- Ikon Detail selalu ada -->
                           <button
                             class="btn-icon btn-icon--detail"
                             @click="openDetail(record)"
-                            title="Lihat Detail"
+                            :title="uiText.detail"
                           >
                             <svg
                               viewBox="0 0 24 24"
@@ -1614,7 +1685,7 @@ async function submitIzin() {
                             d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
                           />
                         </svg>
-                        <p>Tidak ada data ditemukan</p>
+                        <p>{{ uiText.noData }}</p>
                       </div>
                     </td>
                   </tr>
@@ -1634,7 +1705,7 @@ async function submitIzin() {
         <Transition name="slide-up">
           <div v-if="modalMode === 'view' && selectedRecord" class="modal" key="view">
             <div class="modal-header">
-              <h3 class="modal-title">Detail Absensi</h3>
+              <h3 class="modal-title">{{ uiText.detailTitle }}</h3>
               <button class="modal-close" @click="closeModal">×</button>
             </div>
             <div class="modal-body">
@@ -1649,35 +1720,34 @@ async function submitIzin() {
               </div>
               <div class="detail-grid">
                 <div class="detail-item">
-                  <span class="detail-label">Tanggal</span>
+                  <span class="detail-label">{{ uiText.date }}</span>
                   <span class="detail-value">{{ formatTanggal(selectedRecord.tanggal) }}</span>
                 </div>
                 <div class="detail-item">
-                  <span class="detail-label">Hari</span>
+                  <span class="detail-label">{{ uiText.day }}</span>
                   <span class="detail-value">{{ selectedRecord.hari }}</span>
                 </div>
                 <div class="detail-item">
-                  <span class="detail-label">Mata Pelajaran</span>
+                  <span class="detail-label">{{ uiText.subject }}</span>
                   <span class="detail-value">{{ selectedRecord.matpel }}</span>
                 </div>
                 <div class="detail-item">
-                  <span class="detail-label">Guru</span>
+                  <span class="detail-label">{{ uiText.teacher }}</span>
                   <span class="detail-value">{{ selectedRecord.guru }}</span>
                 </div>
                 <div class="detail-item">
-                  <span class="detail-label">Jam Masuk</span>
+                  <span class="detail-label">{{ uiText.checkInTime }}</span>
                   <span class="detail-value">{{ selectedRecord.jamMasuk }}</span>
                 </div>
                 <div class="detail-item">
-                  <span class="detail-label">Jam Keluar</span>
+                  <span class="detail-label">{{ uiText.checkOutTime }}</span>
                   <span class="detail-value">{{ selectedRecord.jamKeluar }}</span>
                 </div>
                 <div class="detail-item">
                   <span class="detail-label">Jam Jadwal</span>
-                  <span class="detail-value"
-                    >{{ selectedRecord.jamJadwalMulai }} –
-                    {{ selectedRecord.jamJadwalSelesai }}</span
-                  >
+                  <span class="detail-value">
+                    {{ selectedRecord.jamJadwalMulai }} – {{ selectedRecord.jamJadwalSelesai }}
+                  </span>
                 </div>
                 <div class="detail-item">
                   <span class="detail-label">Buka Absensi</span>
@@ -1685,33 +1755,33 @@ async function submitIzin() {
                 </div>
               </div>
               <div class="detail-ket">
-                <span class="detail-label">Keterangan</span>
+                <span class="detail-label">{{ uiText.note }}</span>
                 <p class="detail-ket-val">{{ selectedRecord.keterangan }}</p>
               </div>
               <div v-if="selectedRecord.dokumenPendukung" class="detail-ket">
-                <span class="detail-label">Dokumen Pendukung</span>
-                <p class="detail-ket-val">Dokumen sudah diunggah.</p>
+                <span class="detail-label">{{ uiText.supportingDoc }}</span>
+                <p class="detail-ket-val">{{ uiText.docUploaded }}</p>
               </div>
             </div>
             <div class="modal-footer">
-              <button class="btn btn-ghost" @click="closeModal">Tutup</button>
+              <button class="btn btn-ghost" @click="closeModal">{{ uiText.close }}</button>
             </div>
           </div>
 
           <div v-else-if="modalMode === 'izin'" class="modal" key="izin">
             <div class="modal-header">
-              <h3 class="modal-title">Ajukan Izin / Sakit</h3>
+              <h3 class="modal-title">{{ uiText.leaveTitle }}</h3>
               <button class="modal-close" @click="closeModal">×</button>
             </div>
             <div class="modal-body">
               <div class="form-group">
-                <label class="form-label">Tanggal Tidak Hadir</label>
+                <label class="form-label">{{ uiText.absentDate }}</label>
                 <input v-model="izinForm.tanggal" type="date" class="form-input" />
               </div>
               <div class="form-group">
-                <label class="form-label">Jadwal</label>
+                <label class="form-label">{{ uiText.schedule }}</label>
                 <select v-model="izinForm.jadwal_id" class="form-input">
-                  <option :value="null" disabled>-- Pilih Jadwal --</option>
+                  <option :value="null" disabled>{{ uiText.selectSchedule }}</option>
                   <option
                     v-for="opt in todayJadwalOptions"
                     :key="opt.jadwal_id"
@@ -1723,44 +1793,44 @@ async function submitIzin() {
                 <p
                   v-if="todayJadwalOptions.length === 0"
                   class="form-hint-warn"
-                  style="color: #d97706; margin-top: 5px; font-size: 0.85rem"
+                  style="margin-top: 5px"
                 >
-                  ⚠️ Izin/Sakit hanya tersedia untuk jadwal absen pagi dan sebelum batas terlambat.
+                  {{ uiText.leaveWarning }}
                 </p>
               </div>
               <div class="form-group">
-                <label class="form-label">Jenis Ketidakhadiran</label>
+                <label class="form-label">{{ uiText.absenceType }}</label>
                 <div class="radio-group">
                   <label class="radio-item" :class="{ active: izinForm.jenis === 'izin' }">
                     <input v-model="izinForm.jenis" type="radio" value="izin" hidden />
-                    <span class="radio-dot"></span> Izin
+                    <span class="radio-dot"></span> {{ uiText.leave }}
                   </label>
                   <label class="radio-item" :class="{ active: izinForm.jenis === 'sakit' }">
                     <input v-model="izinForm.jenis" type="radio" value="sakit" hidden />
-                    <span class="radio-dot"></span> Sakit
+                    <span class="radio-dot"></span> {{ uiText.sick }}
                   </label>
                 </div>
               </div>
               <div class="form-group">
                 <label class="form-label">
-                  Keterangan
-                  <span v-if="izinForm.jenis !== 'sakit'" class="form-optional">(opsional)</span>
+                  {{ uiText.description }}
+                  <span v-if="izinForm.jenis !== 'sakit'" class="form-optional">{{
+                    uiText.optional
+                  }}</span>
                 </label>
                 <textarea
                   v-model="izinForm.keterangan"
                   class="form-input form-textarea"
                   :placeholder="
-                    izinForm.jenis === 'sakit'
-                      ? 'Contoh: Demam dan tidak bisa mengikuti pelajaran'
-                      : 'Tuliskan alasan izin jika diperlukan...'
+                    izinForm.jenis === 'sakit' ? uiText.sickPlaceholder : uiText.leavePlaceholder
                   "
                   rows="3"
                 />
               </div>
               <div v-if="izinForm.jenis === 'sakit'" class="form-group">
-                <label class="form-label"
-                  >Upload Surat Sakit <span style="color: #dc2626">*</span></label
-                >
+                <label class="form-label">
+                  {{ uiText.uploadSickLetter }} <span style="color: #dc2626">*</span>
+                </label>
                 <div class="file-upload" @click="fileInput?.click()">
                   <svg
                     viewBox="0 0 24 24"
@@ -1775,10 +1845,8 @@ async function submitIzin() {
                       d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
                     />
                   </svg>
-                  <span>{{
-                    izinForm.file ? izinForm.file.name : "Klik untuk upload surat sakit"
-                  }}</span>
-                  <small style="color: #9ca3af">.pdf / .jpg / .png — maks 2 MB</small>
+                  <span>{{ izinForm.file ? izinForm.file.name : uiText.uploadSickHint }}</span>
+                  <small style="color: #9ca3af">{{ uiText.fileInfo }}</small>
                   <input
                     ref="fileInput"
                     type="file"
@@ -1790,9 +1858,9 @@ async function submitIzin() {
               </div>
             </div>
             <div class="modal-footer">
-              <button class="btn btn-ghost" @click="closeModal">Batal</button>
+              <button class="btn btn-ghost" @click="closeModal">{{ uiText.cancel }}</button>
               <button class="btn btn-primary" :disabled="izinSubmitDisabled" @click="submitIzin">
-                {{ loadingIzin ? "Mengirim..." : "Kirim Pengajuan" }}
+                {{ loadingIzin ? uiText.sending : uiText.submit }}
               </button>
             </div>
           </div>
@@ -2347,14 +2415,13 @@ td {
   font-weight: 400;
 }
 
-/* ── Action Group — redesigned ────────────────────────────── */
+/* Action Group */
 .action-group {
   display: flex;
   align-items: center;
   gap: 5px;
 }
 
-/* Tombol aksi utama (Masuk / Keluar) — pill kecil dengan ikon */
 .btn-action {
   display: inline-flex;
   align-items: center;
@@ -2378,7 +2445,6 @@ td {
   opacity: 0.5;
   cursor: not-allowed;
 }
-
 .btn-action--masuk {
   background: #16a34a;
   color: white;
@@ -2386,7 +2452,6 @@ td {
 .btn-action--masuk:hover:not(:disabled) {
   background: #15803d;
 }
-
 .btn-action--keluar {
   background: #eff6ff;
   color: #2563eb;
@@ -2396,7 +2461,6 @@ td {
   background: #dbeafe;
 }
 
-/* Tombol ikon bulat kecil (Izin & Detail) */
 .btn-icon {
   display: inline-flex;
   align-items: center;
@@ -2418,7 +2482,6 @@ td {
   opacity: 0.4;
   cursor: not-allowed;
 }
-
 .btn-icon--izin {
   color: #d97706;
   border-color: #fde68a;
@@ -2428,7 +2491,6 @@ td {
   background: #fef3c7;
   border-color: #f59e0b;
 }
-
 .btn-icon--detail {
   color: #6b7280;
   border-color: #e5e7eb;
@@ -2440,7 +2502,7 @@ td {
   border-color: #bbf7d0;
 }
 
-/* Status chip inline di kolom aksi */
+/* Status chip */
 .status-chip {
   display: inline-flex;
   align-items: center;
@@ -2529,73 +2591,6 @@ td {
 .empty-inner p {
   font-size: 13px;
   margin: 0;
-}
-
-/* ── SKELETON ─────────────────────────────────────────────── */
-.skeleton-row td {
-  border-bottom: 1px solid #f9fafb;
-  padding: 13px 14px;
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: -400px 0;
-  }
-  100% {
-    background-position: 400px 0;
-  }
-}
-
-.skel {
-  border-radius: 6px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 800px 100%;
-  animation: shimmer 1.4s ease-in-out infinite;
-  height: 13px;
-}
-.skel-date {
-  width: 80px;
-}
-.skel-hari {
-  width: 60px;
-}
-.skel-mapel {
-  width: 110px;
-  height: 13px;
-}
-.skel-jam {
-  width: 72px;
-  height: 10px;
-}
-.skel-guru {
-  width: 90px;
-}
-.skel-time {
-  width: 42px;
-}
-.skel-badge {
-  width: 64px;
-  height: 22px;
-  border-radius: 20px;
-}
-.skel-ket {
-  width: 100px;
-}
-.skel-btn {
-  width: 64px;
-  height: 26px;
-  border-radius: 8px;
-}
-.skel-btn-sm {
-  width: 28px;
-  height: 26px;
-  border-radius: 7px;
-}
-
-.skel-action-group {
-  display: flex;
-  align-items: center;
-  gap: 5px;
 }
 
 /* Modal */
@@ -2819,6 +2814,205 @@ td {
   opacity: 0;
 }
 
+/* Skeleton */
+@keyframes skeletonShimmer {
+  0% {
+    background-position: 220% 0;
+  }
+  100% {
+    background-position: -220% 0;
+  }
+}
+.skel {
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ecfdf5 0%, #d1fae5 45%, #ecfdf5 100%);
+  background-size: 220% 100%;
+  animation: skeletonShimmer 1.25s ease-in-out infinite;
+}
+.skeleton-row td {
+  border-bottom: 1px solid #f9fafb;
+  padding: 13px 14px;
+}
+
+.header-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.skel-title {
+  width: 180px;
+  height: 26px;
+  border-radius: 8px;
+}
+.skel-subtitle {
+  width: 300px;
+  height: 14px;
+  border-radius: 8px;
+}
+.skel-date-pill {
+  width: 150px;
+  height: 28px;
+}
+.skel-header-btn {
+  width: 160px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.today-skeleton-card {
+  border-color: #d1fae5;
+}
+.skel-today-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  flex-shrink: 0;
+}
+.today-skeleton-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.skel-today-title {
+  width: 230px;
+  height: 18px;
+  border-radius: 8px;
+}
+.skel-today-desc {
+  width: 360px;
+  max-width: 100%;
+  height: 14px;
+  border-radius: 8px;
+}
+.skel-pill {
+  width: 80px;
+  height: 22px;
+  display: inline-flex;
+}
+.skel-status-pill {
+  width: 130px;
+  height: 24px;
+}
+.skel-today-btn {
+  width: 180px;
+  height: 38px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.stat-skeleton-card {
+  min-height: 112px;
+}
+.skel-stat-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+}
+.skel-stat-value {
+  width: 70px;
+  height: 30px;
+  border-radius: 8px;
+  margin-top: 4px;
+}
+.skel-stat-label {
+  width: 100px;
+  height: 13px;
+  border-radius: 8px;
+}
+
+.skel-progress-title {
+  width: 210px;
+  height: 16px;
+  border-radius: 8px;
+}
+.skel-progress-percent {
+  width: 48px;
+  height: 18px;
+  border-radius: 8px;
+}
+.skel-progress-track {
+  width: 100%;
+  height: 10px;
+}
+.skel-legend {
+  width: 85px;
+  height: 14px;
+  border-radius: 8px;
+}
+
+.skel-tabs {
+  width: 255px;
+  height: 38px;
+  border-radius: 10px;
+}
+.skel-search {
+  width: 230px;
+  height: 38px;
+  border-radius: 10px;
+}
+.skel-select {
+  width: 130px;
+  height: 38px;
+  border-radius: 10px;
+}
+
+.skel-date {
+  width: 86px;
+  height: 14px;
+  border-radius: 8px;
+}
+.skel-hari {
+  width: 72px;
+  height: 14px;
+  border-radius: 8px;
+}
+.skel-mapel {
+  width: 140px;
+  height: 15px;
+  border-radius: 8px;
+}
+.skel-jam {
+  width: 90px;
+  height: 11px;
+  border-radius: 8px;
+}
+.skel-guru {
+  width: 120px;
+  height: 14px;
+  border-radius: 8px;
+}
+.skel-time {
+  width: 52px;
+  height: 14px;
+  border-radius: 8px;
+}
+.skel-badge {
+  width: 86px;
+  height: 26px;
+}
+.skel-ket {
+  width: 150px;
+  height: 14px;
+  border-radius: 8px;
+}
+.skel-action-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.skel-btn {
+  width: 78px;
+  height: 32px;
+  border-radius: 9px;
+}
+.skel-btn-sm {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+}
+
 /* Responsive */
 @media (max-width: 900px) {
   .stats-grid {
@@ -2871,233 +3065,391 @@ td {
   line-height: 1.4 !important;
 }
 
-/* Skeleton Loading */
-.skel {
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(90deg, #ecfdf5 0%, #d1fae5 45%, #ecfdf5 100%);
+/* ============================================================
+   DARK MODE
+   ============================================================ */
+.layout-root[data-theme="dark"] .table-card {
+  background: #171923;
+  border-color: #2a2d3a;
+}
+
+.layout-root[data-theme="dark"] .table-head-bar {
+  border-bottom-color: #2a2d3a;
+}
+
+.layout-root[data-theme="dark"] thead tr {
+  background: #1f2230;
+}
+
+.layout-root[data-theme="dark"] th {
+  color: #a5adcb;
+  border-bottom-color: #2a2d3a;
+}
+
+.layout-root[data-theme="dark"] td {
+  background: #171923;
+  color: #cbd5e1;
+  border-bottom-color: #242735;
+}
+
+.layout-root[data-theme="dark"] .table-row:hover td {
+  background: #202635;
+}
+
+.layout-root[data-theme="dark"] .td-date,
+.layout-root[data-theme="dark"] .td-mapel,
+.layout-root[data-theme="dark"] .td-jam {
+  color: #f1f5f9;
+}
+
+.layout-root[data-theme="dark"] .td-hari,
+.layout-root[data-theme="dark"] .td-guru,
+.layout-root[data-theme="dark"] .jadwal-jam,
+.layout-root[data-theme="dark"] .td-ket {
+  color: #94a3b8;
+}
+.layout-root[data-theme="dark"] {
+  background: #10111a;
+  color: #e8eaf6;
+}
+.layout-root[data-theme="dark"] .layout-content {
+  background: #10111a;
+}
+
+/* Teks utama */
+.layout-root[data-theme="dark"] .dash-title,
+.layout-root[data-theme="dark"] .today-absen-title,
+.layout-root[data-theme="dark"] .table-title,
+.layout-root[data-theme="dark"] .stat-value,
+.layout-root[data-theme="dark"] .progress-title,
+.layout-root[data-theme="dark"] th,
+.layout-root[data-theme="dark"] .td-date,
+.layout-root[data-theme="dark"] .td-mapel,
+.layout-root[data-theme="dark"] .td-jam,
+.layout-root[data-theme="dark"] .modal-title,
+.layout-root[data-theme="dark"] .detail-value,
+.layout-root[data-theme="dark"] .form-label {
+  color: #e8eaf6;
+}
+
+.layout-root[data-theme="dark"] .dash-sub,
+.layout-root[data-theme="dark"] .today-absen-desc,
+.layout-root[data-theme="dark"] .stat-label,
+.layout-root[data-theme="dark"] .legend-item,
+.layout-root[data-theme="dark"] td,
+.layout-root[data-theme="dark"] .td-hari,
+.layout-root[data-theme="dark"] .td-guru,
+.layout-root[data-theme="dark"] .td-ket,
+.layout-root[data-theme="dark"] .detail-label,
+.layout-root[data-theme="dark"] .form-optional,
+.layout-root[data-theme="dark"] .jadwal-jam {
+  color: #6b7280;
+}
+
+/* Card background */
+.layout-root[data-theme="dark"] .today-absen-card,
+.layout-root[data-theme="dark"] .stat-card,
+.layout-root[data-theme="dark"] .progress-card,
+.layout-root[data-theme="dark"] .table-card,
+.layout-root[data-theme="dark"] .modal {
+  background: #1a1d2e;
+  border-color: #2c2f45;
+}
+
+/* Today card borders */
+.layout-root[data-theme="dark"] .today-card--warning {
+  border-color: rgba(217, 119, 6, 0.35);
+}
+.layout-root[data-theme="dark"] .today-card--danger {
+  border-color: rgba(220, 38, 38, 0.35);
+}
+.layout-root[data-theme="dark"] .today-card--success {
+  border-color: rgba(22, 163, 74, 0.35);
+}
+.layout-root[data-theme="dark"] .today-card--info {
+  border-color: rgba(37, 99, 235, 0.35);
+}
+.layout-root[data-theme="dark"] .today-card--idle {
+  border-color: #2c2f45;
+}
+
+/* Today icon */
+.layout-root[data-theme="dark"] .today-absen-icon {
+  background: rgba(22, 163, 74, 0.15);
+  color: #4ade80;
+}
+
+/* Status type pills */
+.layout-root[data-theme="dark"] .today-absen-status,
+.layout-root[data-theme="dark"] .status-type--success {
+  background: rgba(22, 163, 74, 0.15);
+  color: #4ade80;
+}
+.layout-root[data-theme="dark"] .status-type--warning {
+  background: rgba(217, 119, 6, 0.15);
+  color: #fbbf24;
+}
+.layout-root[data-theme="dark"] .status-type--danger {
+  background: rgba(220, 38, 38, 0.15);
+  color: #f87171;
+}
+.layout-root[data-theme="dark"] .status-type--info {
+  background: rgba(37, 99, 235, 0.15);
+  color: #60a5fa;
+}
+.layout-root[data-theme="dark"] .status-type--idle {
+  background: #1e2235;
+  color: #94a3b8;
+}
+
+/* Mapel pills */
+.layout-root[data-theme="dark"] .mapel-pill {
+  background: #1e2235;
+  color: #94a3b8;
+  border-color: #334155;
+}
+.layout-root[data-theme="dark"] .mapel-pill--active {
+  background: rgba(22, 163, 74, 0.15);
+  color: #4ade80;
+  border-color: rgba(22, 163, 74, 0.3);
+}
+
+/* Chip */
+.layout-root[data-theme="dark"] .chip--success {
+  background: rgba(22, 163, 74, 0.15);
+  color: #4ade80;
+}
+.layout-root[data-theme="dark"] .chip--danger {
+  background: rgba(220, 38, 38, 0.15);
+  color: #f87171;
+}
+.layout-root[data-theme="dark"] .chip--warning {
+  background: rgba(217, 119, 6, 0.15);
+  color: #fbbf24;
+}
+.layout-root[data-theme="dark"] .chip--info {
+  background: rgba(37, 99, 235, 0.15);
+  color: #60a5fa;
+}
+.layout-root[data-theme="dark"] .chip--idle {
+  background: #1e2235;
+  color: #94a3b8;
+}
+
+/* Stat card */
+.layout-root[data-theme="dark"] .stat-icon {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Progress */
+.layout-root[data-theme="dark"] .progress-track {
+  background: #25283a;
+}
+
+/* Toolbar / Tab */
+.layout-root[data-theme="dark"] .tab-bar {
+  background: #111827;
+}
+.layout-root[data-theme="dark"] .tab {
+  background: #111827;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+.layout-root[data-theme="dark"] .tab:hover {
+  background: #374151;
+  color: #f8fafc;
+}
+.layout-root[data-theme="dark"] .tab.active {
+  background: #4b5563;
+  border-color: #6b7280;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+/* Search & Select */
+.layout-root[data-theme="dark"] .search-input,
+.layout-root[data-theme="dark"] .filter-select,
+.layout-root[data-theme="dark"] .form-input {
+  background: #111827;
+  border-color: #243044;
+  color: #e5e7eb;
+}
+.layout-root[data-theme="dark"] .search-input::placeholder,
+.layout-root[data-theme="dark"] .form-input::placeholder {
+  color: #64748b;
+}
+
+/* Table */
+.layout-root[data-theme="dark"] table thead {
+  background: #111827;
+}
+.layout-root[data-theme="dark"] tr,
+.layout-root[data-theme="dark"] td,
+.layout-root[data-theme="dark"] th {
+  border-color: #243044;
+}
+.layout-root[data-theme="dark"] .table-head-bar {
+  border-color: #2c2f45;
+}
+.layout-root[data-theme="dark"] .table-row:hover {
+  background: #2d3348 !important;
+}
+.layout-root[data-theme="dark"] .table-row:hover td {
+  background: transparent;
+  color: #f8fafc;
+}
+
+/* Badge */
+.layout-root[data-theme="dark"] .badge-hadir {
+  background: rgba(22, 163, 74, 0.15);
+  color: #4ade80;
+}
+.layout-root[data-theme="dark"] .badge-terlambat {
+  background: rgba(147, 51, 234, 0.15);
+  color: #c084fc;
+}
+.layout-root[data-theme="dark"] .badge-izin {
+  background: rgba(217, 119, 6, 0.15);
+  color: #fbbf24;
+}
+.layout-root[data-theme="dark"] .badge-sakit {
+  background: rgba(37, 99, 235, 0.15);
+  color: #60a5fa;
+}
+.layout-root[data-theme="dark"] .badge-alfa {
+  background: rgba(220, 38, 38, 0.15);
+  color: #f87171;
+}
+
+/* Status chip */
+.layout-root[data-theme="dark"] .status-chip--success {
+  background: rgba(22, 163, 74, 0.15);
+  color: #4ade80;
+}
+.layout-root[data-theme="dark"] .status-chip--danger {
+  background: rgba(220, 38, 38, 0.15);
+  color: #f87171;
+}
+.layout-root[data-theme="dark"] .status-chip--warning {
+  background: rgba(217, 119, 6, 0.15);
+  color: #fbbf24;
+}
+.layout-root[data-theme="dark"] .status-chip--info {
+  background: rgba(37, 99, 235, 0.15);
+  color: #60a5fa;
+}
+.layout-root[data-theme="dark"] .status-chip--idle {
+  background: #1e2235;
+  color: #94a3b8;
+  border-color: #334155;
+}
+
+/* Action buttons */
+.layout-root[data-theme="dark"] .btn-action--masuk {
+  background: #16a34a;
+  color: white;
+}
+.layout-root[data-theme="dark"] .btn-action--keluar {
+  background: rgba(37, 99, 235, 0.15);
+  color: #60a5fa;
+  border-color: rgba(37, 99, 235, 0.3);
+}
+.layout-root[data-theme="dark"] .btn-icon--detail {
+  background: #1e2235;
+  color: #94a3b8;
+  border-color: #334155;
+}
+.layout-root[data-theme="dark"] .btn-icon--detail:hover {
+  background: rgba(22, 163, 74, 0.12);
+  color: #4ade80;
+  border-color: rgba(22, 163, 74, 0.3);
+}
+.layout-root[data-theme="dark"] .btn-icon--izin {
+  background: rgba(217, 119, 6, 0.1);
+  color: #fbbf24;
+  border-color: rgba(217, 119, 6, 0.3);
+}
+
+/* Rec badge & dash date */
+.layout-root[data-theme="dark"] .rec-badge {
+  background: rgba(22, 163, 74, 0.15);
+  color: #4ade80;
+}
+.layout-root[data-theme="dark"] .dash-date {
+  background: rgba(22, 163, 74, 0.15);
+  color: #4ade80;
+}
+
+/* Modal */
+.layout-root[data-theme="dark"] .modal-backdrop {
+  background: rgba(0, 0, 0, 0.65);
+}
+.layout-root[data-theme="dark"] .modal-header,
+.layout-root[data-theme="dark"] .modal-footer {
+  border-color: #2c2f45;
+}
+.layout-root[data-theme="dark"] .modal-close {
+  background: #1e2235;
+  border-color: #334155;
+  color: #94a3b8;
+}
+
+/* Detail */
+.layout-root[data-theme="dark"] .detail-item,
+.layout-root[data-theme="dark"] .detail-ket {
+  border-color: #2c2f45;
+}
+.layout-root[data-theme="dark"] .detail-ket-val {
+  background: #111827;
+  color: #d1d5db;
+}
+
+/* Form */
+.layout-root[data-theme="dark"] .form-hint-warn {
+  background: rgba(217, 119, 6, 0.1);
+  border-color: rgba(217, 119, 6, 0.3);
+  color: #fbbf24;
+}
+.layout-root[data-theme="dark"] .radio-item {
+  background: #111827;
+  border-color: #243044;
+  color: #94a3b8;
+}
+.layout-root[data-theme="dark"] .radio-item.active {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: #22c55e;
+  color: #22c55e;
+}
+.layout-root[data-theme="dark"] .file-upload {
+  background: #111827;
+  border-color: #334155;
+  color: #94a3b8;
+}
+.layout-root[data-theme="dark"] .file-upload:hover {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.08);
+  color: #4ade80;
+}
+
+/* Btn ghost dark */
+.layout-root[data-theme="dark"] .btn-ghost {
+  background: #1e2235;
+  color: #94a3b8;
+  border-color: #334155;
+}
+.layout-root[data-theme="dark"] .btn-ghost:hover {
+  background: #2c2f45;
+  color: #e5e7eb;
+}
+
+/* Empty state */
+.layout-root[data-theme="dark"] .empty-inner {
+  color: #4b5563;
+}
+
+/* Skeleton dark */
+.layout-root[data-theme="dark"] .skel {
+  background: linear-gradient(90deg, #1e2235 0%, #252a3d 45%, #1e2235 100%);
   background-size: 220% 100%;
-  border-radius: 999px;
-  animation: skeletonShimmer 1.25s ease-in-out infinite;
-}
-
-@keyframes skeletonShimmer {
-  0% {
-    background-position: 220% 0;
-  }
-  100% {
-    background-position: -220% 0;
-  }
-}
-
-.header-skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.skel-title {
-  width: 180px;
-  height: 26px;
-  border-radius: 8px;
-}
-
-.skel-subtitle {
-  width: 300px;
-  height: 14px;
-  border-radius: 8px;
-}
-
-.skel-date-pill {
-  width: 150px;
-  height: 28px;
-}
-
-.skel-header-btn {
-  width: 160px;
-  height: 36px;
-  border-radius: 10px;
-}
-
-.today-skeleton-card {
-  border-color: #d1fae5;
-}
-
-.skel-today-icon {
-  width: 46px;
-  height: 46px;
-  border-radius: 14px;
-  flex-shrink: 0;
-}
-
-.today-skeleton-content {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.skel-today-title {
-  width: 230px;
-  height: 18px;
-  border-radius: 8px;
-}
-
-.skel-today-desc {
-  width: 360px;
-  max-width: 100%;
-  height: 14px;
-  border-radius: 8px;
-}
-
-.skel-pill {
-  width: 80px;
-  height: 22px;
-  display: inline-flex;
-}
-
-.skel-status-pill {
-  width: 130px;
-  height: 24px;
-}
-
-.skel-today-btn {
-  width: 180px;
-  height: 38px;
-  border-radius: 10px;
-  flex-shrink: 0;
-}
-
-.stat-skeleton-card {
-  min-height: 112px;
-}
-
-.skel-stat-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-}
-
-.skel-stat-value {
-  width: 70px;
-  height: 30px;
-  border-radius: 8px;
-  margin-top: 4px;
-}
-
-.skel-stat-label {
-  width: 100px;
-  height: 13px;
-  border-radius: 8px;
-}
-
-.skel-progress-title {
-  width: 210px;
-  height: 16px;
-  border-radius: 8px;
-}
-
-.skel-progress-percent {
-  width: 48px;
-  height: 18px;
-  border-radius: 8px;
-}
-
-.skel-progress-track {
-  width: 100%;
-  height: 10px;
-}
-
-.skel-legend {
-  width: 85px;
-  height: 14px;
-  border-radius: 8px;
-}
-
-.skel-tabs {
-  width: 255px;
-  height: 38px;
-  border-radius: 10px;
-}
-
-.skel-search {
-  width: 230px;
-  height: 38px;
-  border-radius: 10px;
-}
-
-.skel-select {
-  width: 130px;
-  height: 38px;
-  border-radius: 10px;
-}
-
-.skeleton-row td {
-  padding-top: 14px;
-  padding-bottom: 14px;
-}
-
-.skel-date {
-  width: 86px;
-  height: 14px;
-  border-radius: 8px;
-}
-
-.skel-hari {
-  width: 72px;
-  height: 14px;
-  border-radius: 8px;
-}
-
-.skel-mapel {
-  width: 140px;
-  height: 15px;
-  border-radius: 8px;
-}
-
-.skel-jam {
-  width: 90px;
-  height: 11px;
-  border-radius: 8px;
-}
-
-.skel-guru {
-  width: 120px;
-  height: 14px;
-  border-radius: 8px;
-}
-
-.skel-time {
-  width: 52px;
-  height: 14px;
-  border-radius: 8px;
-}
-
-.skel-badge {
-  width: 86px;
-  height: 26px;
-}
-
-.skel-ket {
-  width: 150px;
-  height: 14px;
-  border-radius: 8px;
-}
-
-.skel-action-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.skel-btn {
-  width: 78px;
-  height: 32px;
-  border-radius: 9px;
-}
-
-.skel-btn-sm {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
 }
 </style>

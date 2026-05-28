@@ -6,6 +6,7 @@ import Sidebar from "../../components/AppSidebar.vue";
 import Navbar from "../../components/AppNavbar.vue";
 import AppFooter from "../../components/AppFooter.vue";
 import api from "../../plugins/axios";
+import { useAppearanceStore } from "@/stores/useAppearanceStore";
 
 // ============================================================================
 // STORE & ROUTER
@@ -13,6 +14,26 @@ import api from "../../plugins/axios";
 const authStore = useAuthStore();
 const router = useRouter();
 const sidebarOpen = ref(false);
+const appearanceStore = useAppearanceStore();
+
+const dashboardTheme = computed(() => appearanceStore.resolvedTheme || "light");
+const isEn = computed(() => appearanceStore.language === "en");
+
+const txt = computed(() =>
+  isEn.value
+    ? {
+        morning: "Good Morning",
+        noon: "Good Afternoon",
+        afternoon: "Good Evening",
+        night: "Good Night",
+      }
+    : {
+        morning: "Selamat Pagi",
+        noon: "Selamat Siang",
+        afternoon: "Selamat Sore",
+        night: "Selamat Malam",
+      },
+);
 
 // ============================================================================
 // NOTIFICATION SETTING
@@ -35,7 +56,7 @@ let timerJam = null;
 let timerFetch = null;
 
 const todayStr = computed(() =>
-  waktuSekarang.value.toLocaleDateString("id-ID", {
+  waktuSekarang.value.toLocaleDateString(isEn.value ? "en-US" : "id-ID", {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -45,10 +66,10 @@ const todayStr = computed(() =>
 
 const greeting = computed(() => {
   const jam = waktuSekarang.value.getHours();
-  if (jam < 11) return "Selamat Pagi";
-  if (jam < 15) return "Selamat Siang";
-  if (jam < 18) return "Selamat Sore";
-  return "Selamat Malam";
+  if (jam < 11) return txt.value.morning;
+  if (jam < 15) return txt.value.noon;
+  if (jam < 18) return txt.value.afternoon;
+  return txt.value.night;
 });
 
 const jamSekarang = computed(() => {
@@ -435,7 +456,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="layout-root">
+  <div class="layout-root" :data-theme="dashboardTheme">
     <Sidebar :open="sidebarOpen" @close="sidebarOpen = false" />
 
     <div class="layout-main">
@@ -1885,5 +1906,88 @@ onUnmounted(() => {
     flex-direction: column;
     gap: 4px;
   }
+}
+
+/* ============================================================================
+   DARK MODE OVERRIDE - hanya tambahan, style lama tidak dihapus
+============================================================================ */
+.layout-root[data-theme="dark"] {
+  background: #10111a;
+  color: #e8eaf6;
+}
+
+.layout-root[data-theme="dark"] .layout-content {
+  background: #10111a;
+}
+
+.layout-root[data-theme="dark"] .stat-card,
+.layout-root[data-theme="dark"] .card {
+  background: #1a1d2e;
+  border-color: #2c2f45;
+}
+
+.layout-root[data-theme="dark"] .stat-num,
+.layout-root[data-theme="dark"] .card-title,
+.layout-root[data-theme="dark"] .jadwal-mapel,
+.layout-root[data-theme="dark"] .absen-title,
+.layout-root[data-theme="dark"] .rekap-label {
+  color: #e8eaf6;
+}
+
+.layout-root[data-theme="dark"] .stat-lbl,
+.layout-root[data-theme="dark"] .empty-text,
+.layout-root[data-theme="dark"] .jadwal-meta,
+.layout-root[data-theme="dark"] .absen-desc,
+.layout-root[data-theme="dark"] .chip-label,
+.layout-root[data-theme="dark"] .peng-date,
+.layout-root[data-theme="dark"] .peng-isi,
+.layout-root[data-theme="dark"] .peng-chip {
+  color: #9ca3af;
+}
+
+.layout-root[data-theme="dark"] .rekap-bg,
+.layout-root[data-theme="dark"] .jadwal-line,
+.layout-root[data-theme="dark"] .skeleton-card {
+  background: #25283a;
+}
+
+.layout-root[data-theme="dark"] .jadwal-dot {
+  background: #374151;
+  border-color: #4b5563;
+}
+
+.layout-root[data-theme="dark"] .jadwal-done-badge {
+  background: #25283a;
+  border-color: #374151;
+  color: #9ca3af;
+}
+
+.layout-root[data-theme="dark"] .pengumuman-item {
+  background: #1f2937 !important;
+  border-color: #374151 !important;
+}
+
+.layout-root[data-theme="dark"] .peng-icon-wrap,
+.layout-root[data-theme="dark"] .peng-date,
+.layout-root[data-theme="dark"] .peng-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: #374151;
+}
+
+.layout-root[data-theme="dark"] .peng-chip-expired {
+  background: rgba(217, 119, 6, 0.12);
+  border-color: rgba(217, 119, 6, 0.32);
+  color: #fbbf24;
+}
+
+.layout-root[data-theme="dark"] .absen-btn-via-guru {
+  background: #25283a !important;
+  color: #94a3b8 !important;
+  border-color: #374151 !important;
+}
+
+.layout-root[data-theme="dark"] .skeleton {
+  background: linear-gradient(90deg, #25283a 25%, #303449 50%, #25283a 75%);
+  background-size: 200% 100%;
 }
 </style>

@@ -1,6 +1,7 @@
 // src/stores/auth.js
 import { defineStore } from "pinia";
 import api, { setAuthToken, clearAuthToken, getToken } from "../plugins/axios";
+import router from "../router";
 
 export const useAuthStore = defineStore("auth", {
   state: () => ({
@@ -8,6 +9,14 @@ export const useAuthStore = defineStore("auth", {
     justLoggedOut: false,
     isReady: false,
     _fetchMePromise: null,
+
+    // Two Factor
+    requireOtp: false,
+    pendingUserId: null,
+
+    // Auto Logout
+    _logoutTimer: null,
+    _activityListeners: [],
   }),
 
   getters: {
@@ -20,15 +29,36 @@ export const useAuthStore = defineStore("auth", {
   },
 
   actions: {
+    // ── LOGIN ─────────────────────────────────────────────────────────────────
     async login(nisn, password, remember = false) {
-      const { data } = await api.post("/api/login", {
-        nisn,
-        password,
-        remember,
+      const { data } = await api.post("/api/login", { nisn, password, remember });
+
+      if (data.data?.require_otp) {
+        this.requireOtp = true;
+        this.pendingUserId = data.data.user_id;
+        sessionStorage.setItem("pending_otp_user_id", data.data.user_id); // ← tambah
+        return { require_otp: true, user_id: data.data.user_id };
+      }
+
+      this._handleLoginSuccess(data.data, remember);
+      return data;
+    },
+
+    // ── VERIFY OTP ────────────────────────────────────────────────────────────
+    async verifyOtp(otp, remember = false) {
+      const { data } = await api.post("/api/verify-otp", {
+        user_id: this.pendingUserId,
+        otp,
       });
 
-      const token = data.data?.token;
-      const user = data.data?.user;
+      this._clearOtpState();
+      this._handleLoginSuccess(data.data, remember);
+      return data;
+    },
+
+    // ── HANDLE LOGIN SUCCESS (shared) ─────────────────────────────────────────
+    _handleLoginSuccess(payload, remember = false) {
+      const { token, user, auto_logout } = payload;
 
       if (!token || !user) {
         throw new Error("Login gagal. Data pengguna tidak valid.");
@@ -38,6 +68,7 @@ export const useAuthStore = defineStore("auth", {
         throw new Error("Akses ditolak. Gunakan halaman admin.");
       }
 
+      // Simpan token
       if (remember) {
         localStorage.setItem("token", token);
         sessionStorage.removeItem("token");
@@ -54,10 +85,54 @@ export const useAuthStore = defineStore("auth", {
 
       sessionStorage.setItem("user", JSON.stringify(user));
 
-      return data;
+      // Auto logout timer jika aktif
+      if (auto_logout) {
+        this._startAutoLogoutTimer();
+      }
     },
 
+    // ── AUTO LOGOUT TIMER ─────────────────────────────────────────────────────
+    _startAutoLogoutTimer() {
+      const TIMEOUT_MS = 30 * 60 * 1000; // 30 menit
+
+      const reset = () => {
+        clearTimeout(this._logoutTimer);
+        this._logoutTimer = setTimeout(() => {
+          this.logout();
+          router.push({ name: "Login", query: { reason: "idle" } });
+        }, TIMEOUT_MS);
+      };
+
+      // Hapus listener lama jika ada
+      this._stopAutoLogoutTimer();
+
+      // Daftarkan listener aktivitas
+      const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+      events.forEach((event) => {
+        const handler = () => reset();
+        window.addEventListener(event, handler);
+        this._activityListeners.push({ event, handler });
+      });
+
+      // Mulai timer pertama
+      reset();
+    },
+
+    _stopAutoLogoutTimer() {
+      clearTimeout(this._logoutTimer);
+      this._logoutTimer = null;
+
+      this._activityListeners.forEach(({ event, handler }) => {
+        window.removeEventListener(event, handler);
+      });
+      this._activityListeners = [];
+    },
+
+    // ── LOGOUT ────────────────────────────────────────────────────────────────
     async logout() {
+      this._stopAutoLogoutTimer();
+      this._clearOtpState();
+
       try {
         if (this.token) {
           await api.post("/api/logout");
@@ -71,13 +146,13 @@ export const useAuthStore = defineStore("auth", {
       }
     },
 
+    // ── FETCH ME ──────────────────────────────────────────────────────────────
     fetchMe() {
       if (!this._fetchMePromise) {
         this._fetchMePromise = this._doFetchMe().finally(() => {
           this._fetchMePromise = null;
         });
       }
-
       return this._fetchMePromise;
     },
 
@@ -94,7 +169,6 @@ export const useAuthStore = defineStore("auth", {
 
       try {
         const { data } = await api.get("/api/me");
-
         const user = data.data?.user;
 
         if (!user || !user.roles?.includes("siswa")) {
@@ -104,7 +178,6 @@ export const useAuthStore = defineStore("auth", {
 
         this.user = user;
         sessionStorage.setItem("user", JSON.stringify(user));
-
         return true;
       } catch (e) {
         this._clearSession();
@@ -114,6 +187,7 @@ export const useAuthStore = defineStore("auth", {
       }
     },
 
+    // ── PENGATURAN ────────────────────────────────────────────────────────────
     async fetchPengaturan() {
       try {
         const { data } = await api.get("/api/login");
@@ -123,17 +197,41 @@ export const useAuthStore = defineStore("auth", {
       }
     },
 
+    // ── KEAMANAN (load & save toggle) ─────────────────────────────────────────
+    async fetchKeamanan() {
+      try {
+        const { data } = await api.get("/api/settings");
+        return data.data ?? null;
+      } catch {
+        return null;
+      }
+    },
+
+    async saveKeamanan(payload) {
+      const { data } = await api.put("/api/settings/keamanan", payload);
+      return data;
+    },
+
+    // ── CLEAR SESSION ─────────────────────────────────────────────────────────
     _clearSession() {
       this.user = null;
       this.justLoggedOut = false;
+      // ← JANGAN reset requireOtp & pendingUserId di sini
 
       localStorage.removeItem("token");
       sessionStorage.removeItem("token");
-
       localStorage.removeItem("user");
       sessionStorage.removeItem("user");
+      // ← JANGAN hapus pending_otp_user_id di sini
 
       clearAuthToken();
+    },
+
+    // Panggil ini hanya saat benar-benar selesai (logout / verifyOtp sukses)
+    _clearOtpState() {
+      this.requireOtp = false;
+      this.pendingUserId = null;
+      sessionStorage.removeItem("pending_otp_user_id");
     },
   },
 });

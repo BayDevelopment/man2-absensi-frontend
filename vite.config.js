@@ -15,8 +15,17 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://localhost:8000", // port Laravel
+        target: "http://localhost:8000",
         changeOrigin: true,
+      },
+    },
+  },
+  build: {
+    minify: "terser",
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
       },
     },
   },

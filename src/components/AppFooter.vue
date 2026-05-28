@@ -1,9 +1,32 @@
 <script setup>
-// AppFooter.vue — Footer Dashboard MAN 2 Kota Cilegon
+import { computed } from "vue";
+import { useAppearanceStore } from "@/stores/useAppearanceStore";
+
+const appearanceStore = useAppearanceStore();
+
+const footerTheme = computed(() => appearanceStore.resolvedTheme || "light");
+
+const uiText = computed(() => {
+  const isEn = appearanceStore.language === "en";
+
+  return isEn
+    ? {
+        appName: "Digital Attendance",
+        help: "Help",
+        privacy: "Privacy Policy",
+        terms: "Terms & Conditions",
+      }
+    : {
+        appName: "Absensi Digital",
+        help: "Bantuan",
+        privacy: "Kebijakan Privasi",
+        terms: "Syarat & Ketentuan",
+      };
+});
 </script>
 
 <template>
-  <footer class="ft-root">
+  <footer class="ft-root" :data-theme="footerTheme">
     <div class="ft-left">
       <span class="ft-logo">
         <svg viewBox="0 0 20 20" fill="none">
@@ -48,17 +71,18 @@
           />
         </svg>
       </span>
+
       <p class="ft-copy">
-        © 2026 <span class="ft-school">MAN 2 Kota Cilegon</span> · Absensi Digital
+        © 2026 <span class="ft-school">MAN 2 Kota Cilegon</span> · {{ uiText.appName }}
       </p>
     </div>
 
     <div class="ft-right">
-      <a href="#" class="ft-link">Bantuan</a>
+      <a href="#" class="ft-link">{{ uiText.help }}</a>
       <span class="ft-dot" />
-      <a href="#" class="ft-link">Kebijakan Privasi</a>
+      <a href="#" class="ft-link">{{ uiText.privacy }}</a>
       <span class="ft-dot" />
-      <a href="#" class="ft-link">Syarat & Ketentuan</a>
+      <a href="#" class="ft-link">{{ uiText.terms }}</a>
       <span class="ft-dot" />
       <span class="ft-version">v1.0.0</span>
     </div>
@@ -79,38 +103,41 @@
   gap: 12px;
 }
 
-/* Left */
 .ft-left {
   display: flex;
   align-items: center;
   gap: 8px;
 }
+
 .ft-logo {
   display: flex;
   align-items: center;
   flex-shrink: 0;
 }
+
 .ft-logo svg {
   width: 20px;
   height: 20px;
 }
+
 .ft-copy {
   font-size: 11.5px;
   color: #9ca3af;
   white-space: nowrap;
 }
+
 .ft-school {
   color: #16a34a;
   font-weight: 600;
 }
 
-/* Right */
 .ft-right {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
 }
+
 .ft-link {
   font-size: 11.5px;
   color: #9ca3af;
@@ -118,9 +145,11 @@
   transition: color 0.2s;
   white-space: nowrap;
 }
+
 .ft-link:hover {
   color: #16a34a;
 }
+
 .ft-dot {
   width: 3px;
   height: 3px;
@@ -128,13 +157,37 @@
   background: #d1d5db;
   flex-shrink: 0;
 }
+
 .ft-version {
   font-size: 11px;
   color: #d1d5db;
   font-weight: 500;
 }
 
-/* Responsive */
+/* Dark mode */
+.ft-root[data-theme="dark"] {
+  background: #111827;
+  border-top-color: #243044;
+}
+
+.ft-root[data-theme="dark"] .ft-copy,
+.ft-root[data-theme="dark"] .ft-link {
+  color: #94a3b8;
+}
+
+.ft-root[data-theme="dark"] .ft-school,
+.ft-root[data-theme="dark"] .ft-link:hover {
+  color: #22c55e;
+}
+
+.ft-root[data-theme="dark"] .ft-dot {
+  background: #374151;
+}
+
+.ft-root[data-theme="dark"] .ft-version {
+  color: #64748b;
+}
+
 @media (max-width: 640px) {
   .ft-root {
     height: auto;
@@ -143,6 +196,7 @@
     gap: 6px;
     text-align: center;
   }
+
   .ft-right {
     flex-wrap: wrap;
     justify-content: center;

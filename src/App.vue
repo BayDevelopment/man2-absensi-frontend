@@ -1,13 +1,19 @@
 <script setup>
+import { onMounted } from "vue";
 import { computed } from "vue";
 import { useRoute } from "vue-router";
 import { useAuthStore } from "./stores/auth"; // ← tambah
 import Navbar from "./components/AppNavbar.vue";
 import Footer from "./components/AppFooter.vue";
+import { useAppearanceStore } from "@/stores/useAppearanceStore";
 
 const route = useRoute();
 const auth = useAuthStore(); // ← tambah
+const appearanceStore = useAppearanceStore();
 
+onMounted(() => {
+  appearanceStore.init();
+});
 // Tunggu auth selesai dicek sebelum render layout
 const showLayout = computed(
   () =>

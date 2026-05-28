@@ -1,0 +1,56 @@
+/* assets/css/theme.css */
+/* Import ini di main.js atau App.vue */
+
+/* ── Light Mode (default) ── */
+:root,
+html.light {
+  --font-size-base: 15px;
+
+  --color-bg: #f0fdf4;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f9fafb;
+  --color-border: #e5e7eb;
+
+  --color-primary: #16a34a;
+  --color-primary-hover: #15803d;
+  --color-primary-soft: #f0fdf4;
+
+  --color-text-primary: #111827;
+  --color-text-secondary: #374151;
+  --color-text-muted: #6b7280;
+}
+
+/* ── Dark Mode ── */
+html.dark {
+  --color-bg: #0f172a;
+  --color-surface: #1e293b;
+  --color-surface-raised: #1f2937;
+  --color-border: #334155;
+
+  --color-primary: #22c55e;
+  --color-primary-hover: #16a34a;
+  --color-primary-soft: #14532d;
+
+  --color-text-primary: #f1f5f9;
+  --color-text-secondary: #cbd5e1;
+  --color-text-muted: #64748b;
+}
+
+/* ── Base ── */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: var(--font-size-base, 15px);
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: "Plus Jakarta Sans", "Nunito", sans-serif;
+  margin: 0;
+}

@@ -121,6 +121,15 @@ const handleLogin = async () => {
 
   try {
     const data = await authStore.login(nisn.value, password.value, rememberMe.value);
+
+    // ── Two Factor: redirect ke halaman OTP ──────────────────
+    if (data?.require_otp) {
+      showToast("info", "Kode OTP telah dikirim ke email kamu!");
+      router.push({ name: "VerifyOtp" });
+      return;
+    }
+    // ─────────────────────────────────────────────────────────
+
     const user = data.data?.user;
     const roles = user?.roles ?? [];
 

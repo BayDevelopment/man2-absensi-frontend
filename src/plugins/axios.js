@@ -34,7 +34,16 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    const isVerifyOtp = error.config?.url?.includes("/verify-otp");
+
     if (error.response?.status === 401) {
+      const isOtpPending = sessionStorage.getItem("pending_otp_user_id");
+      const isVerifyOtpPage = window.location.pathname === "/verify-otp";
+
+      if (isOtpPending || isVerifyOtpPage || isVerifyOtp) {
+        return Promise.reject(error); // ← diam-diam reject, tidak redirect
+      }
+
       localStorage.removeItem("token");
       sessionStorage.removeItem("token");
       localStorage.removeItem("user");
