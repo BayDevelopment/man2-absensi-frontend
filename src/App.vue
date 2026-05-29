@@ -1,25 +1,17 @@
 <script setup>
-import { onMounted } from "vue";
 import { computed } from "vue";
 import { useRoute } from "vue-router";
-import { useAuthStore } from "./stores/auth"; // ← tambah
+import { useAuthStore } from "./stores/auth";
 import Navbar from "./components/AppNavbar.vue";
 import Footer from "./components/AppFooter.vue";
-import { useAppearanceStore } from "@/stores/useAppearanceStore";
 
 const route = useRoute();
-const auth = useAuthStore(); // ← tambah
-const appearanceStore = useAppearanceStore();
+const auth = useAuthStore();
 
-onMounted(() => {
-  appearanceStore.init();
-});
-// Tunggu auth selesai dicek sebelum render layout
+// ✅ init() sudah dipindah ke main.js — tidak perlu onMounted di sini lagi
+
 const showLayout = computed(
-  () =>
-    auth.isReady && // ← tambah kondisi ini
-    !route.meta.hideLayout &&
-    route.meta.layout !== "main",
+  () => auth.isReady && !route.meta.hideLayout && route.meta.layout !== "main",
 );
 </script>
 

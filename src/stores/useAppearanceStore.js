@@ -9,6 +9,12 @@ export const useAppearanceStore = defineStore("appearance", () => {
   let media = null;
   let themeListener = null;
 
+  // ✅ Deteksi bahasa dari sistem (browser/OS)
+  function getSystemLanguage() {
+    const lang = navigator.language || navigator.languages?.[0] || "id";
+    return lang.toLowerCase().startsWith("id") ? "id" : "en";
+  }
+
   function getResolvedTheme(val) {
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     return val === "dark" || (val === "system" && prefersDark) ? "dark" : "light";
@@ -38,14 +44,16 @@ export const useAppearanceStore = defineStore("appearance", () => {
   function init() {
     if (typeof window === "undefined") return;
 
+    // ✅ Kalau belum ada di localStorage, fallback ke sistem — bukan hardcode
     const savedTheme = localStorage.getItem("app_theme") ?? "system";
-    const savedLanguage = localStorage.getItem("app_language") ?? "id";
+    const savedLanguage = localStorage.getItem("app_language") ?? getSystemLanguage();
 
     theme.value = savedTheme;
     language.value = savedLanguage;
 
     applyTheme(savedTheme);
 
+    // ✅ Listen perubahan theme OS secara real-time
     media = window.matchMedia("(prefers-color-scheme: dark)");
 
     if (!themeListener) {

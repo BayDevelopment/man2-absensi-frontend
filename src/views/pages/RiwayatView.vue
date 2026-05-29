@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { useAuthStore } from "../../stores/auth";
+import { useAppearanceStore } from "@/stores/useAppearanceStore";
 import Sidebar from "../../components/AppSidebar.vue";
 import Navbar from "../../components/AppNavbar.vue";
 import AppFooter from "../../components/AppFooter.vue";
@@ -10,8 +11,74 @@ import api from "../../plugins/axios";
 // STORE & STATE
 // ============================================================================
 const authStore = useAuthStore();
+const appearanceStore = useAppearanceStore();
 const sidebarOpen = ref(false);
 
+const pageTheme = computed(() => appearanceStore.resolvedTheme || "light");
+const isEn = computed(() => appearanceStore.language === "en");
+
+// ============================================================================
+// I18N
+// ============================================================================
+const t = computed(() =>
+  isEn.value
+    ? {
+        title: "Attendance History",
+        sub: "Monthly attendance recap",
+        allMonths: "All Months",
+        allStatus: "All Status",
+        records: "records",
+        loading: "…",
+        retry: "Try Again",
+        detailTitle: "Daily Detail",
+        lessons: "lessons",
+        clockIn: "Clock in:",
+        noData: "No data for this filter",
+        hadir: "Present",
+        terlambat: "Late",
+        izin: "Permit",
+        sakit: "Sick",
+        alfa: "Absent",
+        attendance: "Attendance",
+        statusLabel: {
+          Hadir: "Present",
+          Terlambat: "Late",
+          Izin: "Permit",
+          Sakit: "Sick",
+          Alfa: "Absent",
+        },
+      }
+    : {
+        title: "Riwayat Absensi",
+        sub: "Rekap kehadiran per bulan",
+        allMonths: "Semua Bulan",
+        allStatus: "Semua Status",
+        records: "catatan",
+        loading: "…",
+        retry: "Coba Lagi",
+        detailTitle: "Detail Per Hari",
+        lessons: "pelajaran",
+        clockIn: "Jam masuk:",
+        noData: "Tidak ada data untuk filter ini",
+        hadir: "Hadir",
+        terlambat: "Terlambat",
+        izin: "Izin",
+        sakit: "Sakit",
+        alfa: "Alfa",
+        attendance: "Kehadiran",
+        statusLabel: {
+          Hadir: "Hadir",
+          Terlambat: "Terlambat",
+          Izin: "Izin",
+          Sakit: "Sakit",
+          Alfa: "Alfa",
+        },
+      },
+);
+
+// ============================================================================
+// FILTER & DATA
+// ============================================================================
 const selectedBulan = ref("");
 const filterStatus = ref("");
 const bulanOptions = ref([]);
@@ -21,7 +88,6 @@ const isLoading = ref(false);
 const isError = ref(false);
 const errorMsg = ref("");
 
-// AbortController untuk cegah race condition saat filter berganti cepat
 const abortController = ref(null);
 
 // ============================================================================
@@ -45,10 +111,8 @@ async function fetchRiwayat() {
       signal: abortController.value.signal,
     });
 
-    // Ambil opsi bulan dari meta jika tersedia
     if (Array.isArray(res.data.meta?.bulan_options)) {
       bulanOptions.value = res.data.meta.bulan_options;
-      // Set default bulan ke yang pertama jika belum dipilih
       if (!selectedBulan.value && bulanOptions.value.length > 0) {
         selectedBulan.value = bulanOptions.value[0].value;
       }
@@ -60,13 +124,17 @@ async function fetchRiwayat() {
     console.error("[Riwayat] Gagal fetch:", err);
     isError.value = true;
     if (err.response?.status === 401) {
-      errorMsg.value = "Sesi habis. Silakan login kembali.";
+      errorMsg.value = isEn.value
+        ? "Session expired. Please login again."
+        : "Sesi habis. Silakan login kembali.";
     } else if (err.response?.status >= 500) {
-      errorMsg.value = "Server sedang bermasalah. Coba beberapa saat lagi.";
+      errorMsg.value = isEn.value
+        ? "Server error. Please try again later."
+        : "Server sedang bermasalah. Coba beberapa saat lagi.";
     } else if (!navigator.onLine) {
-      errorMsg.value = "Tidak ada koneksi internet.";
+      errorMsg.value = isEn.value ? "No internet connection." : "Tidak ada koneksi internet.";
     } else {
-      errorMsg.value = "Gagal memuat data riwayat.";
+      errorMsg.value = isEn.value ? "Failed to load history data." : "Gagal memuat data riwayat.";
     }
   } finally {
     isLoading.value = false;
@@ -77,8 +145,6 @@ onMounted(() => {
   fetchRiwayat();
 });
 
-// Re-fetch saat filter berubah
-// (bulan & status dikirim sebagai params, biarkan backend yang filter)
 function onBulanChange() {
   fetchRiwayat();
 }
@@ -138,23 +204,24 @@ function sc(s) {
 function formatTgl(str) {
   if (!str) return "—";
   const [y, m, d] = str.split("-");
-  return new Date(Number(y), Number(m) - 1, Number(d)).toLocaleDateString("id-ID", {
+  return new Date(Number(y), Number(m) - 1, Number(d)).toLocaleDateString(
+    isEn.value ? "en-US" : "id-ID",
+    { day: "numeric", month: "long", year: "numeric" },
+  );
+}
+
+const today = computed(() =>
+  new Date().toLocaleDateString(isEn.value ? "en-US" : "id-ID", {
+    weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
-  });
-}
-
-const today = new Date().toLocaleDateString("id-ID", {
-  weekday: "long",
-  day: "numeric",
-  month: "long",
-  year: "numeric",
-});
+  }),
+);
 </script>
 
 <template>
-  <div class="layout-root">
+  <div class="layout-root" :data-theme="pageTheme">
     <Sidebar :open="sidebarOpen" @close="sidebarOpen = false" />
     <div class="layout-main">
       <Navbar @toggle-sidebar="sidebarOpen = !sidebarOpen" />
@@ -162,8 +229,8 @@ const today = new Date().toLocaleDateString("id-ID", {
         <!-- ── Header ── -->
         <div class="dash-header">
           <div>
-            <h1 class="dash-title">Riwayat Absensi</h1>
-            <p class="dash-sub">Rekap kehadiran per bulan · {{ authStore.user?.name }}</p>
+            <h1 class="dash-title">{{ t.title }}</h1>
+            <p class="dash-sub">{{ t.sub }} · {{ authStore.user?.name }}</p>
           </div>
           <div class="header-right">
             <span class="dash-date">{{ today }}</span>
@@ -173,21 +240,21 @@ const today = new Date().toLocaleDateString("id-ID", {
         <!-- ── Filter Bar ── -->
         <div class="filter-bar">
           <select v-model="selectedBulan" class="filter-select" @change="onBulanChange">
-            <option value="">Semua Bulan</option>
+            <option value="">{{ t.allMonths }}</option>
             <option v-for="b in bulanOptions" :key="b.value" :value="b.value">{{ b.label }}</option>
           </select>
 
           <select v-model="filterStatus" class="filter-select" @change="onStatusChange">
-            <option value="">Semua Status</option>
-            <option>Hadir</option>
-            <option>Terlambat</option>
-            <option>Izin</option>
-            <option>Sakit</option>
-            <option>Alfa</option>
+            <option value="">{{ t.allStatus }}</option>
+            <option value="Hadir">{{ t.statusLabel.Hadir }}</option>
+            <option value="Terlambat">{{ t.statusLabel.Terlambat }}</option>
+            <option value="Izin">{{ t.statusLabel.Izin }}</option>
+            <option value="Sakit">{{ t.statusLabel.Sakit }}</option>
+            <option value="Alfa">{{ t.statusLabel.Alfa }}</option>
           </select>
 
           <span class="rec-badge">
-            {{ isLoading ? "…" : allRiwayat.length + " catatan" }}
+            {{ isLoading ? t.loading : allRiwayat.length + " " + t.records }}
           </span>
         </div>
 
@@ -201,7 +268,7 @@ const today = new Date().toLocaleDateString("id-ID", {
             />
           </svg>
           <p>{{ errorMsg }}</p>
-          <button class="btn btn-retry" @click="fetchRiwayat">Coba Lagi</button>
+          <button class="btn btn-retry" @click="fetchRiwayat">{{ t.retry }}</button>
         </div>
 
         <template v-else>
@@ -217,23 +284,23 @@ const today = new Date().toLocaleDateString("id-ID", {
           <div class="rekap-grid" v-else>
             <div class="rekap-card" style="--c: #16a34a; --bg: #f0fdf4">
               <div class="rekap-val">{{ rekap.hadir }}</div>
-              <div class="rekap-lbl">Hadir</div>
+              <div class="rekap-lbl">{{ t.hadir }}</div>
             </div>
             <div class="rekap-card" style="--c: #9333ea; --bg: #fdf4ff">
               <div class="rekap-val">{{ rekap.terlambat }}</div>
-              <div class="rekap-lbl">Terlambat</div>
+              <div class="rekap-lbl">{{ t.terlambat }}</div>
             </div>
             <div class="rekap-card" style="--c: #d97706; --bg: #fffbeb">
               <div class="rekap-val">{{ rekap.izin }}</div>
-              <div class="rekap-lbl">Izin</div>
+              <div class="rekap-lbl">{{ t.izin }}</div>
             </div>
             <div class="rekap-card" style="--c: #2563eb; --bg: #eff6ff">
               <div class="rekap-val">{{ rekap.sakit }}</div>
-              <div class="rekap-lbl">Sakit</div>
+              <div class="rekap-lbl">{{ t.sakit }}</div>
             </div>
             <div class="rekap-card" style="--c: #dc2626; --bg: #fef2f2">
               <div class="rekap-val">{{ rekap.alfa }}</div>
-              <div class="rekap-lbl">Alfa</div>
+              <div class="rekap-lbl">{{ t.alfa }}</div>
             </div>
             <div
               class="rekap-card persen-card"
@@ -243,7 +310,7 @@ const today = new Date().toLocaleDateString("id-ID", {
               }"
             >
               <div class="rekap-val">{{ rekap.persen }}<span style="font-size: 14px">%</span></div>
-              <div class="rekap-lbl">Kehadiran</div>
+              <div class="rekap-lbl">{{ t.attendance }}</div>
               <div class="mini-bar-bg">
                 <div
                   class="mini-bar-fill"
@@ -256,10 +323,10 @@ const today = new Date().toLocaleDateString("id-ID", {
           <!-- ── Timeline ── -->
           <div class="timeline-card">
             <div class="table-head-bar">
-              <h3 class="table-title">Detail Per Hari</h3>
+              <h3 class="table-title">{{ t.detailTitle }}</h3>
             </div>
 
-            <!-- Skeleton timeline -->
+            <!-- Skeleton -->
             <template v-if="isLoading">
               <div v-for="(_, gi) in skeletonGroups" :key="gi" class="day-group">
                 <div class="day-header">
@@ -287,7 +354,7 @@ const today = new Date().toLocaleDateString("id-ID", {
               </div>
             </template>
 
-            <!-- Empty state -->
+            <!-- Empty -->
             <div v-else-if="groupedByDate.length === 0" class="empty-state">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path
@@ -296,7 +363,7 @@ const today = new Date().toLocaleDateString("id-ID", {
                   d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5"
                 />
               </svg>
-              <p>Tidak ada data untuk filter ini</p>
+              <p>{{ t.noData }}</p>
             </div>
 
             <!-- Data -->
@@ -304,7 +371,7 @@ const today = new Date().toLocaleDateString("id-ID", {
               <div v-for="group in groupedByDate" :key="group.tanggal" class="day-group">
                 <div class="day-header">
                   <span class="day-label">{{ group.hari }}, {{ formatTgl(group.tanggal) }}</span>
-                  <span class="day-count">{{ group.items.length }} pelajaran</span>
+                  <span class="day-count">{{ group.items.length }} {{ t.lessons }}</span>
                 </div>
                 <div class="day-items">
                   <div v-for="item in group.items" :key="item.id" class="day-item">
@@ -313,12 +380,14 @@ const today = new Date().toLocaleDateString("id-ID", {
                       <div>
                         <div class="item-mapel">{{ item.matpel }}</div>
                         <div class="item-jam">
-                          Jam masuk: <b>{{ item.jam || "—" }}</b>
+                          {{ t.clockIn }} <b>{{ item.jam || "—" }}</b>
                         </div>
                       </div>
                     </div>
                     <div class="item-right">
-                      <span class="badge" :class="sc(item.status).cls">{{ item.status }}</span>
+                      <span class="badge" :class="sc(item.status).cls">
+                        {{ t.statusLabel[item.status] ?? item.status }}
+                      </span>
                       <span v-if="item.ket && item.ket !== '—'" class="item-ket">{{
                         item.ket
                       }}</span>
@@ -666,6 +735,147 @@ const today = new Date().toLocaleDateString("id-ID", {
 .badge-alfa {
   background: #fef2f2;
   color: #dc2626;
+}
+
+/* ============================================================================
+   DARK MODE
+============================================================================ */
+.layout-root[data-theme="dark"] {
+  background: #10111a;
+  color: #e8eaf6;
+}
+.layout-root[data-theme="dark"] .layout-content {
+  background: #10111a;
+}
+
+/* Header */
+.layout-root[data-theme="dark"] .dash-title {
+  color: #4ade80;
+}
+.layout-root[data-theme="dark"] .dash-sub {
+  color: #9ca3af;
+}
+.layout-root[data-theme="dark"] .dash-date {
+  background: #14532d;
+  color: #4ade80;
+}
+
+/* Filter */
+.layout-root[data-theme="dark"] .filter-select {
+  background: #1a1d2e;
+  border-color: #2c2f45;
+  color: #e8eaf6;
+}
+.layout-root[data-theme="dark"] .filter-select:focus {
+  border-color: #4ade80;
+}
+.layout-root[data-theme="dark"] .rec-badge {
+  background: #14532d;
+  color: #4ade80;
+}
+
+/* Error box */
+.layout-root[data-theme="dark"] .error-box {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.3);
+}
+.layout-root[data-theme="dark"] .btn-retry {
+  background: #1a1d2e;
+  border-color: rgba(220, 38, 38, 0.4);
+}
+.layout-root[data-theme="dark"] .btn-retry:hover {
+  background: #25283a;
+}
+
+/* Rekap cards */
+.layout-root[data-theme="dark"] .rekap-card {
+  background: #1a1d2e;
+  border-color: #2c2f45;
+  border-top-color: var(--c);
+}
+.layout-root[data-theme="dark"] .rekap-lbl {
+  color: #9ca3af;
+}
+.layout-root[data-theme="dark"] .mini-bar-bg {
+  background: #25283a;
+}
+
+/* Skeleton */
+.layout-root[data-theme="dark"] .skel {
+  background: linear-gradient(90deg, #25283a 25%, #303449 50%, #25283a 75%);
+  background-size: 200% 100%;
+}
+
+/* Timeline card */
+.layout-root[data-theme="dark"] .timeline-card {
+  background: #1a1d2e;
+  border-color: #2c2f45;
+}
+.layout-root[data-theme="dark"] .table-head-bar {
+  border-bottom-color: #2c2f45;
+}
+.layout-root[data-theme="dark"] .table-title {
+  color: #e8eaf6;
+}
+.layout-root[data-theme="dark"] .empty-state {
+  color: #6b7280;
+}
+
+/* Day group */
+.layout-root[data-theme="dark"] .day-group {
+  border-bottom-color: #2c2f45;
+}
+.layout-root[data-theme="dark"] .day-header {
+  background: #14162a;
+}
+.layout-root[data-theme="dark"] .day-label {
+  color: #c7d2fe;
+}
+.layout-root[data-theme="dark"] .day-count {
+  color: #6b7280;
+}
+
+/* Day item */
+.layout-root[data-theme="dark"] .day-item {
+  background: #1f2235;
+  border-color: #2c2f45;
+}
+.layout-root[data-theme="dark"] .day-item:hover {
+  background: #1e2d1e;
+}
+.layout-root[data-theme="dark"] .item-mapel {
+  color: #e8eaf6;
+}
+.layout-root[data-theme="dark"] .item-jam {
+  color: #6b7280;
+}
+.layout-root[data-theme="dark"] .item-jam b {
+  color: #c7d2fe;
+}
+.layout-root[data-theme="dark"] .item-ket {
+  color: #6b7280;
+}
+
+/* Badge dark adjustments */
+.layout-root[data-theme="dark"] .badge-hadir {
+  background: rgba(22, 163, 74, 0.15);
+  color: #4ade80;
+}
+.layout-root[data-theme="dark"] .badge-terlambat {
+  background: rgba(147, 51, 234, 0.15);
+  color: #c084fc;
+}
+.layout-root[data-theme="dark"] .badge-izin {
+  background: rgba(217, 119, 6, 0.15);
+  color: #fbbf24;
+}
+.layout-root[data-theme="dark"] .badge-sakit {
+  background: rgba(37, 99, 235, 0.15);
+  color: #60a5fa;
+}
+.layout-root[data-theme="dark"] .badge-alfa {
+  background: rgba(220, 38, 38, 0.15);
+  color: #f87171;
 }
 
 /* ── Responsive ── */

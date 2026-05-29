@@ -5,12 +5,18 @@ import App from "./App.vue";
 import router from "./router";
 import "./assets/css/theme.css";
 import i18n from "./plugins/i18n";
+import { useAppearanceStore } from "@/stores/useAppearanceStore";
 
 const app = createApp(App);
+const pinia = createPinia();
 
-app.use(createPinia());
+app.use(pinia);
 app.use(router);
 app.use(i18n);
+
+// ✅ Init appearance SEBELUM mount supaya tidak ada flash/flicker
+const appearanceStore = useAppearanceStore();
+appearanceStore.init();
 
 // Click outside directive
 app.directive("click-outside", {

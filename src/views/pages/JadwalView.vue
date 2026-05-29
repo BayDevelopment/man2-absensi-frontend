@@ -5,58 +5,107 @@ import Navbar from "../../components/AppNavbar.vue";
 import AppFooter from "../../components/AppFooter.vue";
 import api from "@/plugins/axios";
 import Swal from "sweetalert2";
+import { useAppearanceStore } from "@/stores/useAppearanceStore";
 
+// ============================================================================
+// STORE & THEME
+// ============================================================================
+const appearanceStore = useAppearanceStore();
 const sidebarOpen = ref(false);
 
+const pageTheme = computed(() => appearanceStore.resolvedTheme || "light");
+const isEn = computed(() => appearanceStore.language === "en");
+
+// ============================================================================
+// I18N
+// ============================================================================
+const t = computed(() =>
+  isEn.value
+    ? {
+        title: "Class Schedule",
+        sub: "Loading class…",
+        subLoaded: (kelas, semester) => (semester ? `${kelas} · ${semester}` : kelas),
+        jamPelajaran: "Lesson Hours",
+        mataPlajaran: "subjects",
+        noSchedule: (label) => `No schedule for ${label}.`,
+        loading: "Loading schedule…",
+        loadingDate: "Loading schedule for this date…",
+        error: "Failed to load schedule.",
+        alertTitle: "Failed to Load Schedule",
+        alertConfirm: "Understood",
+        errorDateMsg: "Schedule for this date failed to load.",
+        noConnection: "Unable to connect to server. Please try again.",
+        break: "Break",
+      }
+    : {
+        title: "Jadwal Pelajaran",
+        sub: "Memuat kelas…",
+        subLoaded: (kelas, semester) => (semester ? `${kelas} · ${semester}` : kelas),
+        jamPelajaran: "Jam Pelajaran",
+        mataPlajaran: "mata pelajaran",
+        noSchedule: (label) => `Tidak ada jadwal untuk ${label}.`,
+        loading: "Memuat jadwal…",
+        loadingDate: "Memuat jadwal tanggal ini…",
+        error: "Tidak dapat terhubung ke server. Silakan coba lagi.",
+        alertTitle: "Gagal Memuat Jadwal",
+        alertConfirm: "Mengerti",
+        errorDateMsg: "Jadwal pada tanggal ini gagal dimuat.",
+        noConnection: "Tidak dapat terhubung ke server. Silakan coba lagi.",
+        break: "Istirahat",
+      },
+);
+
+// ============================================================================
+// DATE UTILS
+// ============================================================================
 const now = new Date();
 
-const today = now.toLocaleDateString("id-ID", {
-  weekday: "long",
-  day: "numeric",
-  month: "long",
-  year: "numeric",
-});
+const today = computed(() =>
+  now.toLocaleDateString(isEn.value ? "en-US" : "id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }),
+);
 
 function formatDateKey(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
-
   return `${year}-${month}-${day}`;
 }
 
-function getHariIndonesia(date) {
-  return date.toLocaleDateString("id-ID", {
+function getHariLabel(date) {
+  return date.toLocaleDateString(isEn.value ? "en-US" : "id-ID", {
     weekday: "long",
   });
 }
 
-// Ambil 6 hari sekolah mulai dari hari ini.
-// Minggu dilewati.
 function getSchoolDates(totalHari = 6) {
   const dates = [];
   const cursor = new Date(now);
 
   while (dates.length < totalHari) {
     const hari = cursor.getDay();
-
-    // 0 = Minggu, dilewati
     if (hari !== 0) {
       dates.push({
         tanggalKey: formatDateKey(cursor),
         tanggal: new Date(cursor),
-        hari: getHariIndonesia(cursor),
+        hari: getHariLabel(cursor),
       });
     }
-
     cursor.setDate(cursor.getDate() + 1);
   }
 
   return dates;
 }
 
-const weekDates = getSchoolDates(6);
-const activeTanggal = ref(weekDates[0]?.tanggalKey ?? formatDateKey(now));
+// ============================================================================
+// STATE
+// ============================================================================
+const weekDates = computed(() => getSchoolDates(6));
+const activeTanggal = ref(formatDateKey(now));
 
 const jadwalData = ref({});
 const kelasNama = ref("");
@@ -68,18 +117,21 @@ const isLoading = ref(true);
 const isLoadingTanggal = ref(false);
 const errorMsg = ref("");
 
+// ============================================================================
+// COMPUTED — ACTIVE DATE
+// ============================================================================
 const activeDateObj = computed(() => {
-  const item = weekDates.find((data) => data.tanggalKey === activeTanggal.value);
+  const item = weekDates.value.find((d) => d.tanggalKey === activeTanggal.value);
   return item?.tanggal ?? now;
 });
 
 const activeHari = computed(() => {
-  const item = weekDates.find((data) => data.tanggalKey === activeTanggal.value);
-  return item?.hari ?? getHariIndonesia(activeDateObj.value);
+  const item = weekDates.value.find((d) => d.tanggalKey === activeTanggal.value);
+  return item?.hari ?? getHariLabel(activeDateObj.value);
 });
 
 const activeDateLabel = computed(() =>
-  activeDateObj.value.toLocaleDateString("id-ID", {
+  activeDateObj.value.toLocaleDateString(isEn.value ? "en-US" : "id-ID", {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -87,123 +139,56 @@ const activeDateLabel = computed(() =>
   }),
 );
 
+// ============================================================================
+// MAPEL STYLE
+// ============================================================================
 const mapelStyle = {
-  Matematika: {
-    bg: "#eff6ff",
-    border: "#93c5fd",
-    text: "#1d4ed8",
-    icon: "📐",
-  },
-  "Bahasa Indonesia": {
-    bg: "#fdf4ff",
-    border: "#d8b4fe",
-    text: "#7e22ce",
-    icon: "📝",
-  },
-  Fisika: {
-    bg: "#fff7ed",
-    border: "#fed7aa",
-    text: "#c2410c",
-    icon: "⚛️",
-  },
-  Kimia: {
-    bg: "#fefce8",
-    border: "#fde047",
-    text: "#a16207",
-    icon: "🧪",
-  },
-  Biologi: {
-    bg: "#f0fdf4",
-    border: "#86efac",
-    text: "#15803d",
-    icon: "🌿",
-  },
-  Sejarah: {
-    bg: "#fef2f2",
-    border: "#fca5a5",
-    text: "#b91c1c",
-    icon: "🏛️",
-  },
-  "Bahasa Inggris": {
-    bg: "#ecfeff",
-    border: "#67e8f9",
-    text: "#0e7490",
-    icon: "🌐",
-  },
-  Ekonomi: {
-    bg: "#fff7ed",
-    border: "#fdba74",
-    text: "#ea580c",
-    icon: "📊",
-  },
-  Geografi: {
-    bg: "#f0fdf4",
-    border: "#6ee7b7",
-    text: "#065f46",
-    icon: "🗺️",
-  },
-  "Pendidikan Agama": {
-    bg: "#fffbeb",
-    border: "#fcd34d",
-    text: "#92400e",
-    icon: "📖",
-  },
-  Olahraga: {
-    bg: "#fdf4ff",
-    border: "#c4b5fd",
-    text: "#6d28d9",
-    icon: "⚽",
-  },
-  "Seni Budaya": {
-    bg: "#fef2f2",
-    border: "#fca5a5",
-    text: "#be123c",
-    icon: "🎨",
-  },
-  PKN: {
-    bg: "#eff6ff",
-    border: "#93c5fd",
-    text: "#1e40af",
-    icon: "🏛️",
-  },
-  BK: {
-    bg: "#f0fdf4",
-    border: "#86efac",
-    text: "#166534",
-    icon: "💬",
-  },
+  Matematika: { bg: "#eff6ff", border: "#93c5fd", text: "#1d4ed8", icon: "📐" },
+  "Bahasa Indonesia": { bg: "#fdf4ff", border: "#d8b4fe", text: "#7e22ce", icon: "📝" },
+  Fisika: { bg: "#fff7ed", border: "#fed7aa", text: "#c2410c", icon: "⚛️" },
+  Kimia: { bg: "#fefce8", border: "#fde047", text: "#a16207", icon: "🧪" },
+  Biologi: { bg: "#f0fdf4", border: "#86efac", text: "#15803d", icon: "🌿" },
+  Sejarah: { bg: "#fef2f2", border: "#fca5a5", text: "#b91c1c", icon: "🏛️" },
+  "Bahasa Inggris": { bg: "#ecfeff", border: "#67e8f9", text: "#0e7490", icon: "🌐" },
+  Ekonomi: { bg: "#fff7ed", border: "#fdba74", text: "#ea580c", icon: "📊" },
+  Geografi: { bg: "#f0fdf4", border: "#6ee7b7", text: "#065f46", icon: "🗺️" },
+  "Pendidikan Agama": { bg: "#fffbeb", border: "#fcd34d", text: "#92400e", icon: "📖" },
+  Olahraga: { bg: "#fdf4ff", border: "#c4b5fd", text: "#6d28d9", icon: "⚽" },
+  "Seni Budaya": { bg: "#fef2f2", border: "#fca5a5", text: "#be123c", icon: "🎨" },
+  PKN: { bg: "#eff6ff", border: "#93c5fd", text: "#1e40af", icon: "🏛️" },
+  BK: { bg: "#f0fdf4", border: "#86efac", text: "#166534", icon: "💬" },
 };
 
 function getStyle(matpel) {
-  return (
-    mapelStyle[matpel] ?? {
-      bg: "#f9fafb",
-      border: "#e5e7eb",
-      text: "#374151",
-      icon: "📚",
-    }
-  );
+  return mapelStyle[matpel] ?? { bg: "#f9fafb", border: "#e5e7eb", text: "#374151", icon: "📚" };
 }
 
-function showErrorAlert(message = "Terjadi kesalahan saat memuat jadwal.") {
+// ============================================================================
+// SWEETALERT — THEME AWARE
+// ============================================================================
+function showErrorAlert(message) {
+  const isDark = pageTheme.value === "dark";
   Swal.fire({
     icon: "error",
-    title: "Gagal Memuat Jadwal",
+    title: t.value.alertTitle,
     text: message,
-    confirmButtonText: "Mengerti",
+    confirmButtonText: t.value.alertConfirm,
     confirmButtonColor: "#16a34a",
+    background: isDark ? "#1a1d2e" : undefined,
+    color: isDark ? "#e8eaf6" : undefined,
   });
 }
 
+// ============================================================================
+// FETCH
+// ============================================================================
 async function fetchJadwalRange() {
   isLoading.value = true;
   errorMsg.value = "";
 
   try {
     const { data } = await api.get("/api/jadwal", {
-      params: {
-        start_date: weekDates[0]?.tanggalKey,
-      },
+      params: { start_date: weekDates.value[0]?.tanggalKey },
     });
 
     if (data.status === "success") {
@@ -213,15 +198,18 @@ async function fetchJadwalRange() {
       totalJamPelajaranGlobal.value = data.total_jam_pelajaran ?? 0;
       ruangUtama.value = data.ruang_utama ?? "";
       jamOperasional.value = data.jam_operasional ?? "";
+
+      // set active ke hari pertama minggu jika belum ada
+      if (!activeTanggal.value && weekDates.value.length > 0) {
+        activeTanggal.value = weekDates.value[0].tanggalKey;
+      }
       return;
     }
 
-    errorMsg.value = data.message ?? "Gagal memuat jadwal.";
+    errorMsg.value = data.message ?? t.value.error;
     showErrorAlert(errorMsg.value);
   } catch (err) {
-    errorMsg.value =
-      err.response?.data?.message ?? "Tidak dapat terhubung ke server. Silakan coba lagi.";
-
+    errorMsg.value = err.response?.data?.message ?? t.value.noConnection;
     showErrorAlert(errorMsg.value);
     console.error("Fetch jadwal error:", err);
   } finally {
@@ -232,10 +220,7 @@ async function fetchJadwalRange() {
 async function fetchJadwalByTanggal(tanggalKey) {
   activeTanggal.value = tanggalKey;
 
-  // Kalau data tanggal sudah ada dari /api/jadwal, tidak perlu request ulang.
-  if (jadwalData.value[tanggalKey]) {
-    return;
-  }
+  if (jadwalData.value[tanggalKey]) return;
 
   isLoadingTanggal.value = true;
 
@@ -251,14 +236,12 @@ async function fetchJadwalByTanggal(tanggalKey) {
         jam_selesai: data.jam_selesai,
         items: data.data ?? [],
       };
-
       return;
     }
 
-    showErrorAlert(data.message ?? "Jadwal pada tanggal ini gagal dimuat.");
+    showErrorAlert(data.message ?? t.value.errorDateMsg);
   } catch (err) {
-    showErrorAlert(err.response?.data?.message ?? "Tidak dapat memuat jadwal pada tanggal ini.");
-
+    showErrorAlert(err.response?.data?.message ?? t.value.errorDateMsg);
     console.error("Fetch jadwal tanggal error:", err);
   } finally {
     isLoadingTanggal.value = false;
@@ -266,9 +249,13 @@ async function fetchJadwalByTanggal(tanggalKey) {
 }
 
 onMounted(() => {
+  activeTanggal.value = formatDateKey(now);
   fetchJadwalRange();
 });
 
+// ============================================================================
+// COMPUTED — HARI AKTIF
+// ============================================================================
 const hariPayload = computed(() => {
   return (
     jadwalData.value[activeTanggal.value] ?? {
@@ -282,62 +269,53 @@ const hariPayload = computed(() => {
   );
 });
 
-const jadwalHariIni = computed(() => {
-  return hariPayload.value.items ?? [];
-});
+const jadwalHariIni = computed(() => hariPayload.value.items ?? []);
 
-const infoJP = computed(() => {
-  return hariPayload.value.jam_pelajaran ?? 0;
-});
+const infoJP = computed(() => hariPayload.value.jam_pelajaran ?? 0);
 
 const infoRuang = computed(() => {
-  const item = jadwalHariIni.value.find((jadwal) => {
-    return !jadwal.is_break && jadwal.ruang;
-  });
-
+  const item = jadwalHariIni.value.find((j) => !j.is_break && j.ruang);
   return item?.ruang ?? "–";
 });
 
 const infoJam = computed(() => {
-  if (!jadwalHariIni.value.length) {
-    return "–";
-  }
-
+  if (!jadwalHariIni.value.length) return "–";
   const mulai = hariPayload.value.jam_mulai;
   const selesai = hariPayload.value.jam_selesai;
-
-  if (mulai && selesai) {
-    return `${mulai} – ${selesai} WIB`;
-  }
-
-  return "–";
+  return mulai && selesai ? `${mulai} – ${selesai} WIB` : "–";
 });
 
 function getDotsForTanggal(tanggalKey) {
   return (jadwalData.value[tanggalKey]?.items ?? []).slice(0, 5);
 }
+
+// Short day name (3 chars, language-aware)
+function shortDayName(hariStr) {
+  return hariStr.substring(0, 3);
+}
 </script>
 
 <template>
-  <div class="layout-root">
+  <div class="layout-root" :data-theme="pageTheme">
     <Sidebar :open="sidebarOpen" @close="sidebarOpen = false" />
     <div class="layout-main">
       <Navbar @toggle-sidebar="sidebarOpen = !sidebarOpen" />
       <main class="layout-content">
-        <!-- Header -->
+        <!-- ── Header ── -->
         <div class="dash-header">
           <div>
-            <h1 class="dash-title">Jadwal Pelajaran</h1>
-            <!-- Kelas & semester dari API -->
+            <h1 class="dash-title">{{ t.title }}</h1>
             <p class="dash-sub">
-              {{ kelasNama || "Memuat kelas…" }}
-              <template v-if="semesterNama"> · {{ semesterNama }}</template>
+              <template v-if="kelasNama">
+                {{ t.subLoaded(kelasNama, semesterNama) }}
+              </template>
+              <template v-else>{{ t.sub }}</template>
             </p>
           </div>
           <span class="dash-date">{{ today }}</span>
         </div>
 
-        <!-- Info strip — dinamis per hari dipilih -->
+        <!-- ── Info Strip ── -->
         <div class="info-strip">
           <div class="info-item">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -347,8 +325,7 @@ function getDotsForTanggal(tanggalKey) {
                 d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
               />
             </svg>
-            <!-- JP dari hari aktif, bukan hardcode 0 -->
-            <span>{{ infoJP }} Jam Pelajaran</span>
+            <span>{{ infoJP }} {{ t.jamPelajaran }}</span>
           </div>
           <div class="info-item">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -363,7 +340,6 @@ function getDotsForTanggal(tanggalKey) {
                 d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"
               />
             </svg>
-            <!-- Ruang dari hari aktif, bukan hardcode -->
             <span>{{ infoRuang }}</span>
           </div>
           <div class="info-item">
@@ -374,12 +350,11 @@ function getDotsForTanggal(tanggalKey) {
                 d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <!-- Jam operasional dari hari aktif, bukan hardcode -->
             <span>{{ infoJam }}</span>
           </div>
         </div>
 
-        <!-- ── Kalender mini mingguan ── -->
+        <!-- ── Kalender Mini Mingguan ── -->
         <div class="week-calendar">
           <div
             v-for="item in weekDates"
@@ -391,15 +366,13 @@ function getDotsForTanggal(tanggalKey) {
             }"
             @click="fetchJadwalByTanggal(item.tanggalKey)"
           >
-            <span class="cal-day-name">{{ item.hari.substring(0, 3) }}</span>
-
+            <span class="cal-day-name">{{ shortDayName(item.hari) }}</span>
             <span
               class="cal-date-num"
               :class="{ 'is-today': item.tanggalKey === formatDateKey(now) }"
             >
               {{ item.tanggal.getDate() }}
             </span>
-
             <div class="cal-dots">
               <span
                 v-for="(dot, di) in getDotsForTanggal(item.tanggalKey).slice(0, 4)"
@@ -411,41 +384,41 @@ function getDotsForTanggal(tanggalKey) {
           </div>
         </div>
 
-        <!-- Loading state -->
+        <!-- ── Loading State ── -->
         <div v-if="isLoading" class="state-box">
           <div class="spinner"></div>
-          <span>Memuat jadwal…</span>
+          <span>{{ t.loading }}</span>
         </div>
 
-        <!-- Error state -->
+        <!-- ── Error State ── -->
         <div v-else-if="errorMsg" class="state-box error">
           <span>⚠️ {{ errorMsg }}</span>
         </div>
 
+        <!-- ── Loading Tanggal ── -->
         <div v-else-if="isLoadingTanggal" class="state-box">
           <div class="spinner"></div>
-          <span>Memuat jadwal tanggal ini…</span>
+          <span>{{ t.loadingDate }}</span>
         </div>
 
-        <!-- Jadwal card -->
+        <!-- ── Jadwal Card ── -->
         <div v-else class="jadwal-card">
           <div class="jadwal-header">
             <div>
               <h3 class="jadwal-title">{{ activeHari }}</h3>
-              <!-- Tanggal lengkap hari aktif — tidak ada ambiguitas hari mana -->
               <p class="jadwal-date-label">{{ activeDateLabel }}</p>
             </div>
             <span class="jadwal-sub">
-              {{ jadwalHariIni.filter((j) => !j.is_break).length }} mata pelajaran
+              {{ jadwalHariIni.filter((j) => !j.is_break).length }} {{ t.mataPlajaran }}
             </span>
           </div>
 
           <!-- Kosong -->
           <div v-if="jadwalHariIni.length === 0" class="state-box">
-            <span>Tidak ada jadwal untuk {{ activeDateLabel }}.</span>
+            <span>{{ t.noSchedule(activeDateLabel) }}</span>
           </div>
 
-          <!-- List jadwal -->
+          <!-- List -->
           <div v-else class="jadwal-list">
             <div
               v-for="(item, i) in jadwalHariIni"
@@ -460,7 +433,7 @@ function getDotsForTanggal(tanggalKey) {
               <!-- Break slot -->
               <template v-if="item.is_break">
                 <span class="break-time">{{ item.jam }}</span>
-                <span class="break-label">☕ {{ item.label }}</span>
+                <span class="break-label">☕ {{ t.break }}</span>
               </template>
 
               <!-- Pelajaran slot -->
@@ -494,6 +467,9 @@ function getDotsForTanggal(tanggalKey) {
 </template>
 
 <style scoped>
+/* ============================================================================
+   BASE
+============================================================================ */
 .layout-root {
   display: flex;
   min-height: 100vh;
@@ -565,7 +541,7 @@ function getDotsForTanggal(tanggalKey) {
   flex-shrink: 0;
 }
 
-/* ── Kalender mini mingguan ── */
+/* ── Kalender mini ── */
 .week-calendar {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
@@ -623,7 +599,6 @@ function getDotsForTanggal(tanggalKey) {
   background: #16a34a;
   color: white;
 }
-/* Dots indikator jadwal */
 .cal-dots {
   display: flex;
   gap: 3px;
@@ -694,7 +669,6 @@ function getDotsForTanggal(tanggalKey) {
   color: #111827;
   margin: 0 0 2px;
 }
-/* Tanggal lengkap hari aktif — menghilangkan ambiguitas */
 .jadwal-date-label {
   font-size: 11.5px;
   color: #9ca3af;
@@ -712,7 +686,7 @@ function getDotsForTanggal(tanggalKey) {
   gap: 8px;
 }
 
-/* Break slot */
+/* Break */
 .jadwal-break {
   display: flex;
   align-items: center;
@@ -733,7 +707,7 @@ function getDotsForTanggal(tanggalKey) {
   font-weight: 600;
 }
 
-/* Pelajaran slot */
+/* Pelajaran */
 .jadwal-item {
   display: flex;
   align-items: center;
@@ -788,6 +762,144 @@ function getDotsForTanggal(tanggalKey) {
   flex-shrink: 0;
 }
 
+/* ============================================================================
+   DARK MODE
+============================================================================ */
+.layout-root[data-theme="dark"] {
+  background: #10111a;
+  color: #e8eaf6;
+}
+.layout-root[data-theme="dark"] .layout-content {
+  background: #10111a;
+}
+
+/* Header */
+.layout-root[data-theme="dark"] .dash-title {
+  color: #4ade80;
+}
+.layout-root[data-theme="dark"] .dash-sub {
+  color: #9ca3af;
+}
+.layout-root[data-theme="dark"] .dash-date {
+  background: #14532d;
+  color: #4ade80;
+}
+
+/* Info strip */
+.layout-root[data-theme="dark"] .info-item {
+  color: #9ca3af;
+}
+.layout-root[data-theme="dark"] .info-item svg {
+  stroke: #4ade80;
+}
+
+/* Week calendar */
+.layout-root[data-theme="dark"] .week-calendar {
+  background: #1a1d2e;
+  border-color: #2c2f45;
+}
+.layout-root[data-theme="dark"] .cal-day {
+  border-right-color: #2c2f45;
+}
+.layout-root[data-theme="dark"] .cal-day:hover {
+  background: #1f2235;
+}
+.layout-root[data-theme="dark"] .cal-day.cal-active {
+  background: #1e2d1e;
+}
+.layout-root[data-theme="dark"] .cal-day-name {
+  color: #6b7280;
+}
+.layout-root[data-theme="dark"] .cal-day.cal-active .cal-day-name {
+  color: #4ade80;
+}
+.layout-root[data-theme="dark"] .cal-date-num {
+  color: #c7d2fe;
+}
+.layout-root[data-theme="dark"] .cal-day.cal-active .cal-date-num:not(.is-today) {
+  color: #4ade80;
+}
+.layout-root[data-theme="dark"] .cal-date-num.is-today {
+  background: #16a34a;
+  color: white;
+}
+.layout-root[data-theme="dark"] .cal-dot {
+  background: #166534;
+}
+.layout-root[data-theme="dark"] .cal-dot.dot-break {
+  background: #78350f;
+}
+
+/* State box */
+.layout-root[data-theme="dark"] .state-box {
+  background: #1a1d2e;
+  border-color: #2c2f45;
+  color: #6b7280;
+}
+.layout-root[data-theme="dark"] .state-box.error {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.3);
+  color: #f87171;
+}
+.layout-root[data-theme="dark"] .spinner {
+  border-color: #1e2d1e;
+  border-top-color: #4ade80;
+}
+
+/* Jadwal card */
+.layout-root[data-theme="dark"] .jadwal-card {
+  background: #1a1d2e;
+  border-color: #2c2f45;
+}
+.layout-root[data-theme="dark"] .jadwal-header {
+  border-bottom-color: #2c2f45;
+}
+.layout-root[data-theme="dark"] .jadwal-title {
+  color: #e8eaf6;
+}
+.layout-root[data-theme="dark"] .jadwal-date-label {
+  color: #6b7280;
+}
+.layout-root[data-theme="dark"] .jadwal-sub {
+  color: #6b7280;
+}
+
+/* Break dark */
+.layout-root[data-theme="dark"] .jadwal-break {
+  background: #14162a;
+}
+.layout-root[data-theme="dark"] .break-time {
+  color: #6b7280;
+}
+.layout-root[data-theme="dark"] .break-label {
+  color: #fbbf24;
+}
+
+/* Pelajaran dark — overlay gelap di atas warna bg terang */
+.layout-root[data-theme="dark"] .jadwal-item {
+  background: rgba(255, 255, 255, 0.04);
+  border-left-color: var(--ib);
+}
+.layout-root[data-theme="dark"] .jadwal-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+.layout-root[data-theme="dark"] .ji-time {
+  color: #6b7280;
+}
+.layout-root[data-theme="dark"] .ji-meta {
+  color: #6b7280;
+}
+.layout-root[data-theme="dark"] .ji-ruang {
+  color: #9ca3af;
+}
+.layout-root[data-theme="dark"] .ji-ruang svg {
+  stroke: #4ade80;
+}
+
+/* ============================================================================
+   RESPONSIVE
+============================================================================ */
 @media (max-width: 640px) {
   .layout-content {
     padding: 14px;
@@ -815,8 +927,6 @@ function getDotsForTanggal(tanggalKey) {
     width: 26px;
     height: 26px;
   }
-}
-@media (max-width: 640px) {
   .week-calendar {
     grid-template-columns: repeat(3, 1fr);
   }
