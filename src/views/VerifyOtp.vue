@@ -1,43 +1,19 @@
 <!-- src/views/VerifyOtp.vue -->
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from "vue";
+import { ref, computed, onMounted, nextTick } from "vue";
+import { storeToRefs } from "pinia";
+import { useAppearanceStore } from "@/stores/useAppearanceStore";
 import { useAuthStore } from "@/stores/auth";
 import { useRouter } from "vue-router";
 import Swal from "sweetalert2";
 
 // ---------------------------
-// Theme & Language State
+// Theme & Language — dari store
 // ---------------------------
-const themeMode = ref("system");
-const language = ref("id");
+const appearanceStore = useAppearanceStore();
+const { theme: themeMode, resolvedTheme, language } = storeToRefs(appearanceStore);
 
-const systemDark = ref(window.matchMedia("(prefers-color-scheme: dark)").matches);
-
-onMounted(async () => {
-  await nextTick();
-  mounted.value = true;
-
-  // Ambil preferensi yang sudah disimpan dari LoginView
-  const savedTheme = localStorage.getItem("login_theme") || "system";
-  const savedLang = localStorage.getItem("login_lang") || "id";
-  themeMode.value = savedTheme;
-  language.value = savedLang;
-
-  const mq = window.matchMedia("(prefers-color-scheme: dark)");
-  mq.addEventListener("change", (e) => {
-    systemDark.value = e.matches;
-  });
-});
-
-watch(themeMode, (v) => localStorage.setItem("login_theme", v));
-watch(language, (v) => localStorage.setItem("login_lang", v));
-
-const isDark = computed(() => {
-  if (themeMode.value === "dark") return true;
-  if (themeMode.value === "light") return false;
-  return systemDark.value;
-});
-
+const isDark = computed(() => resolvedTheme.value === "dark");
 const isEn = computed(() => language.value === "en");
 
 // ---------------------------
@@ -98,7 +74,7 @@ const loading = ref(false);
 const mounted = ref(false);
 
 // ---------------------------
-// SweetAlert2 Toast
+// Toast
 // ---------------------------
 const toast = Swal.mixin({
   toast: true,
@@ -134,6 +110,15 @@ async function submit() {
   toast.fire({ icon: "success", title: t.value.toastSuccess });
   router.push({ name: "Dashboard" });
 }
+
+// ---------------------------
+// Lifecycle
+// ---------------------------
+onMounted(async () => {
+  await nextTick();
+  mounted.value = true;
+  // ✅ Tidak perlu init theme/lang di sini — sudah dihandle main.js
+});
 </script>
 
 <template>
@@ -142,22 +127,29 @@ async function submit() {
     <div class="controls-bar">
       <!-- Language toggle -->
       <div class="lang-switcher">
-        <button class="lang-btn" :class="{ active: language === 'id' }" @click="language = 'id'">
+        <button
+          class="lang-btn"
+          :class="{ active: language === 'id' }"
+          @click="appearanceStore.setLanguage('id')"
+        >
           <span class="flag">🇮🇩</span> ID
         </button>
-        <button class="lang-btn" :class="{ active: language === 'en' }" @click="language = 'en'">
+        <button
+          class="lang-btn"
+          :class="{ active: language === 'en' }"
+          @click="appearanceStore.setLanguage('en')"
+        >
           <span class="flag">🇬🇧</span> EN
         </button>
       </div>
 
       <!-- Theme switcher -->
       <div class="theme-switcher">
-        <!-- Light -->
         <button
           class="theme-btn"
           :class="{ active: themeMode === 'light' }"
           :title="t.themeLight"
-          @click="themeMode = 'light'"
+          @click="appearanceStore.setTheme('light')"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="4" />
@@ -167,12 +159,11 @@ async function submit() {
             />
           </svg>
         </button>
-        <!-- Dark -->
         <button
           class="theme-btn"
           :class="{ active: themeMode === 'dark' }"
           :title="t.themeDark"
-          @click="themeMode = 'dark'"
+          @click="appearanceStore.setTheme('dark')"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path
@@ -182,12 +173,11 @@ async function submit() {
             />
           </svg>
         </button>
-        <!-- System -->
         <button
           class="theme-btn"
           :class="{ active: themeMode === 'system' }"
           :title="t.themeSystem"
-          @click="themeMode = 'system'"
+          @click="appearanceStore.setTheme('system')"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="2" y="3" width="20" height="14" rx="2" />

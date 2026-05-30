@@ -36,7 +36,7 @@ export const useAuthStore = defineStore("auth", {
       if (data.data?.require_otp) {
         this.requireOtp = true;
         this.pendingUserId = data.data.user_id;
-        sessionStorage.setItem("pending_otp_user_id", data.data.user_id); // ← tambah
+        sessionStorage.setItem("pending_otp_user_id", data.data.user_id);
         return { require_otp: true, user_id: data.data.user_id };
       }
 
@@ -68,7 +68,6 @@ export const useAuthStore = defineStore("auth", {
         throw new Error("Akses ditolak. Gunakan halaman admin.");
       }
 
-      // Simpan token
       if (remember) {
         localStorage.setItem("token", token);
         sessionStorage.removeItem("token");
@@ -85,7 +84,6 @@ export const useAuthStore = defineStore("auth", {
 
       sessionStorage.setItem("user", JSON.stringify(user));
 
-      // Auto logout timer jika aktif
       if (auto_logout) {
         this._startAutoLogoutTimer();
       }
@@ -103,10 +101,8 @@ export const useAuthStore = defineStore("auth", {
         }, TIMEOUT_MS);
       };
 
-      // Hapus listener lama jika ada
       this._stopAutoLogoutTimer();
 
-      // Daftarkan listener aktivitas
       const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
       events.forEach((event) => {
         const handler = () => reset();
@@ -114,7 +110,6 @@ export const useAuthStore = defineStore("auth", {
         this._activityListeners.push({ event, handler });
       });
 
-      // Mulai timer pertama
       reset();
     },
 
@@ -130,6 +125,7 @@ export const useAuthStore = defineStore("auth", {
 
     // ── LOGOUT ────────────────────────────────────────────────────────────────
     async logout() {
+      this.isReady = false;
       this._stopAutoLogoutTimer();
       this._clearOtpState();
 
@@ -188,11 +184,19 @@ export const useAuthStore = defineStore("auth", {
     },
 
     // ── PENGATURAN ────────────────────────────────────────────────────────────
+    // Endpoint: GET /api/settings (sesuai routes/api.php → SettingController@index)
     async fetchPengaturan() {
       try {
-        const { data } = await api.get("/api/login");
+        const { data } = await api.get("/api/pengaturan"); // ✅ bukan /api/settings
         return data.data?.pengaturan ?? null;
-      } catch {
+      } catch (e) {
+        console.error(
+          "[fetchPengaturan] Error:",
+          e.response?.status,
+          "[fetchPengaturan] Error:",
+          e.response?.status,
+          e.response?.data ?? e.message,
+        );
         return null;
       }
     },
@@ -202,7 +206,8 @@ export const useAuthStore = defineStore("auth", {
       try {
         const { data } = await api.get("/api/settings");
         return data.data ?? null;
-      } catch {
+      } catch (e) {
+        console.error("[fetchKeamanan] Error:", e.response?.status, e.response?.data ?? e.message);
         return null;
       }
     },
@@ -216,18 +221,14 @@ export const useAuthStore = defineStore("auth", {
     _clearSession() {
       this.user = null;
       this.justLoggedOut = false;
-      // ← JANGAN reset requireOtp & pendingUserId di sini
 
       localStorage.removeItem("token");
       sessionStorage.removeItem("token");
-      localStorage.removeItem("user");
       sessionStorage.removeItem("user");
-      // ← JANGAN hapus pending_otp_user_id di sini
 
       clearAuthToken();
     },
 
-    // Panggil ini hanya saat benar-benar selesai (logout / verifyOtp sukses)
     _clearOtpState() {
       this.requireOtp = false;
       this.pendingUserId = null;

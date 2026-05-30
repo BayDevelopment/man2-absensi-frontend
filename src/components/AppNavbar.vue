@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import { useNotificationStore } from "../stores/notification";
 import { useAppearanceStore } from "@/stores/useAppearanceStore";
+import { searchRoutes } from "@/data/searchRoutes";
 
 const authStore = useAuthStore();
 const notifStore = useNotificationStore();
@@ -14,17 +15,21 @@ const searchQuery = ref("");
 const dropdownOpen = ref(false);
 const notifOpen = ref(false);
 
+// ── Search state ──
+const searchFocused = ref(false);
+const selectedIndex = ref(-1);
+const searchInputRef = ref(null);
+
 const emit = defineEmits(["toggle-sidebar"]);
 
 const navbarTheme = computed(() => appearanceStore.resolvedTheme || "light");
 
 const uiText = computed(() => {
   const isEn = appearanceStore.language === "en";
-
   return isEn
     ? {
         openMenu: "Open menu",
-        searchPlaceholder: "Search something...",
+        searchPlaceholder: "Search pages... (⌘K)",
         notifications: "Notifications",
         new: "new",
         markAllRead: "Mark all as read",
@@ -37,10 +42,12 @@ const uiText = computed(() => {
         myProfile: "My Profile",
         settings: "Settings",
         logout: "Logout",
+        noResults: "No pages found",
+        searchHint: "↑↓ navigate · Enter to go · Esc to close",
       }
     : {
         openMenu: "Buka menu",
-        searchPlaceholder: "Cari sesuatu...",
+        searchPlaceholder: "Cari halaman... (⌘K)",
         notifications: "Notifikasi",
         new: "baru",
         markAllRead: "Tandai semua dibaca",
@@ -53,9 +60,73 @@ const uiText = computed(() => {
         myProfile: "Profil Saya",
         settings: "Pengaturan",
         logout: "Keluar",
+        noResults: "Halaman tidak ditemukan",
+        searchHint: "↑↓ navigasi · Enter untuk buka · Esc tutup",
       };
 });
 
+// ── Search logic ──
+const searchResults = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase();
+  if (!q) return [];
+  const isEn = appearanceStore.language === "en";
+  return searchRoutes.filter((r) => {
+    const label = (isEn ? r.labelEn : r.label).toLowerCase();
+    return label.includes(q) || r.keywords.some((k) => k.includes(q));
+  });
+});
+
+const showSearchDropdown = computed(
+  () => searchFocused.value && searchQuery.value.trim().length > 0,
+);
+
+const navigateTo = (path) => {
+  searchQuery.value = "";
+  searchFocused.value = false;
+  selectedIndex.value = -1;
+  router.push(path);
+};
+
+const handleSearchInput = () => {
+  selectedIndex.value = -1;
+};
+
+const handleSearchKeydown = (e) => {
+  if (!showSearchDropdown.value) return;
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    selectedIndex.value = Math.min(selectedIndex.value + 1, searchResults.value.length - 1);
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    const idx = selectedIndex.value >= 0 ? selectedIndex.value : 0;
+    if (searchResults.value[idx]) navigateTo(searchResults.value[idx].path);
+  } else if (e.key === "Escape") {
+    searchQuery.value = "";
+    searchFocused.value = false;
+    selectedIndex.value = -1;
+    searchInputRef.value?.blur();
+  }
+};
+
+const closeSearch = () => {
+  searchFocused.value = false;
+  searchQuery.value = "";
+  selectedIndex.value = -1;
+};
+
+// ── Global ⌘K / Ctrl+K ──
+const handleGlobalKeydown = (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+    e.preventDefault();
+    searchInputRef.value?.focus();
+    searchFocused.value = true;
+  }
+};
+
+// ── User initials ──
 const initials = computed(() => {
   const name = authStore.user?.name || "";
   return name
@@ -66,13 +137,12 @@ const initials = computed(() => {
     .slice(0, 2);
 });
 
+// ── Time format ──
 const formatTime = (dateStr) => {
   if (!dateStr) return "";
-
   const date = new Date(dateStr);
   const now = new Date();
   const diff = Math.floor((now - date) / 1000 / 60);
-
   if (diff < 1) return uiText.value.justNow;
   if (diff < 60) return `${diff} ${uiText.value.minutesAgo}`;
   if (diff < 1440) return `${Math.floor(diff / 60)} ${uiText.value.hoursAgo}`;
@@ -89,11 +159,9 @@ const toggleNotif = () => {
   notifOpen.value = !notifOpen.value;
   if (dropdownOpen.value) dropdownOpen.value = false;
 };
-
 const closeNotif = () => {
   notifOpen.value = false;
 };
-
 const handleNotifClick = (n) => {
   notifStore.markRead(n.id);
 };
@@ -108,7 +176,6 @@ const toggleDropdown = () => {
   dropdownOpen.value = !dropdownOpen.value;
   if (notifOpen.value) notifOpen.value = false;
 };
-
 const closeDropdown = () => {
   dropdownOpen.value = false;
 };
@@ -118,13 +185,18 @@ let interval = null;
 onMounted(() => {
   notifStore.fetchNotifications();
   interval = setInterval(() => notifStore.fetchNotifications(), 60000);
+  window.addEventListener("keydown", handleGlobalKeydown);
 });
 
-onUnmounted(() => clearInterval(interval));
+onUnmounted(() => {
+  clearInterval(interval);
+  window.removeEventListener("keydown", handleGlobalKeydown);
+});
 </script>
 
 <template>
   <header class="nb-root" :data-theme="navbarTheme">
+    <!-- Hamburger -->
     <button class="nb-hamburger" @click="emit('toggle-sidebar')" :aria-label="uiText.openMenu">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path
@@ -135,7 +207,8 @@ onUnmounted(() => clearInterval(interval));
       </svg>
     </button>
 
-    <div class="nb-search-wrap">
+    <!-- ── Search ── -->
+    <div class="nb-search-wrap" v-click-outside="closeSearch">
       <span class="nb-search-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path
@@ -147,16 +220,74 @@ onUnmounted(() => clearInterval(interval));
       </span>
 
       <input
+        ref="searchInputRef"
         v-model="searchQuery"
         type="text"
         :placeholder="uiText.searchPlaceholder"
         class="nb-search-input"
+        autocomplete="off"
+        @focus="searchFocused = true"
+        @input="handleSearchInput"
+        @keydown="handleSearchKeydown"
       />
 
       <kbd class="nb-search-kbd">⌘K</kbd>
+
+      <!-- Search results dropdown -->
+      <transition name="dropdown">
+        <div v-if="showSearchDropdown" class="search-dropdown">
+          <template v-if="searchResults.length > 0">
+            <div
+              v-for="(item, index) in searchResults"
+              :key="item.path"
+              class="search-item"
+              :class="{ 'search-item-active': index === selectedIndex }"
+              @mousedown.prevent="navigateTo(item.path)"
+              @mouseenter="selectedIndex = index"
+            >
+              <span class="search-item-icon">{{ item.icon }}</span>
+              <span class="search-item-label">
+                {{ appearanceStore.language === "en" ? item.labelEn : item.label }}
+              </span>
+              <span class="search-item-path">{{ item.path }}</span>
+              <svg
+                v-if="index === selectedIndex"
+                class="search-item-enter"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"
+                />
+              </svg>
+            </div>
+            <div class="search-hint">{{ uiText.searchHint }}</div>
+          </template>
+
+          <div v-else class="search-empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803 7.5 7.5 0 0015.803 15.803z"
+              />
+            </svg>
+            <span
+              >{{ uiText.noResults }} "<strong>{{ searchQuery }}</strong
+              >"</span
+            >
+          </div>
+        </div>
+      </transition>
     </div>
 
+    <!-- ── Right side ── -->
     <div class="nb-right">
+      <!-- Notifikasi -->
       <div class="nb-profile-wrap" v-click-outside="closeNotif">
         <button class="nb-icon-btn" @click="toggleNotif" :aria-label="uiText.notifications">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -173,11 +304,9 @@ onUnmounted(() => clearInterval(interval));
           <div v-if="notifOpen" class="notif-dropdown">
             <div class="notif-head">
               <span class="notif-head-title">{{ uiText.notifications }}</span>
-
               <span v-if="notifStore.unreadCount > 0" class="notif-count-badge">
                 {{ notifStore.unreadCount }} {{ uiText.new }}
               </span>
-
               <button
                 v-if="notifStore.unreadCount > 0"
                 class="notif-read-all"
@@ -186,9 +315,7 @@ onUnmounted(() => clearInterval(interval));
                 {{ uiText.markAllRead }}
               </button>
             </div>
-
             <div class="notif-divider" />
-
             <div class="notif-list">
               <div v-if="notifStore.notifications.length === 0" class="notif-empty">
                 <svg
@@ -206,7 +333,6 @@ onUnmounted(() => clearInterval(interval));
                 </svg>
                 <p>{{ uiText.noNotifications }}</p>
               </div>
-
               <div
                 v-for="n in notifStore.notifications"
                 :key="n.id"
@@ -229,6 +355,7 @@ onUnmounted(() => clearInterval(interval));
 
       <div class="nb-divider" />
 
+      <!-- Profile dropdown -->
       <div class="nb-profile-wrap" v-click-outside="closeDropdown">
         <button class="nb-user" @click="toggleDropdown" :class="{ active: dropdownOpen }">
           <div class="nb-avatar">{{ initials }}</div>
@@ -258,9 +385,7 @@ onUnmounted(() => clearInterval(interval));
                 <span class="dd-badge">{{ uiText.student }}</span>
               </div>
             </div>
-
             <div class="dd-divider" />
-
             <RouterLink to="/profil" class="dd-item" @click="closeDropdown">
               <span class="dd-item-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -273,7 +398,6 @@ onUnmounted(() => clearInterval(interval));
               </span>
               {{ uiText.myProfile }}
             </RouterLink>
-
             <RouterLink to="/pengaturan" class="dd-item" @click="closeDropdown">
               <span class="dd-item-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -291,9 +415,7 @@ onUnmounted(() => clearInterval(interval));
               </span>
               {{ uiText.settings }}
             </RouterLink>
-
             <div class="dd-divider" />
-
             <button class="dd-item dd-logout" @click="handleLogout">
               <span class="dd-item-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -314,145 +436,9 @@ onUnmounted(() => clearInterval(interval));
 </template>
 
 <style scoped>
-/* Notif Dropdown */
-.notif-list {
-  max-height: 200px;
-  overflow-y: auto;
-  scroll-behavior: smooth;
-}
-
-/* Opsional — styling scrollbar */
-.notif-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.notif-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.notif-list::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 999px;
-}
-
-.notif-list::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
-}
-.notif-dropdown {
-  position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
-  width: 320px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  z-index: 100;
-  overflow: hidden;
-}
-
-.notif-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 16px;
-}
-.notif-head-title {
-  font-weight: 600;
-  font-size: 14px;
-  flex: 1;
-}
-.notif-count-badge {
-  font-size: 11px;
-  background: #eff6ff;
-  color: #3b82f6;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-weight: 500;
-}
-.notif-read-all {
-  font-size: 11px;
-  color: #6b7280;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-}
-.notif-read-all:hover {
-  color: #3b82f6;
-}
-.notif-divider {
-  height: 1px;
-  background: #f3f4f6;
-}
-
-.notif-list {
-  max-height: 360px;
-  overflow-y: auto;
-}
-.notif-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 32px 16px;
-  color: #9ca3af;
-  font-size: 13px;
-}
-
-.notif-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 16px;
-  cursor: pointer;
-  transition: background 0.15s;
-  position: relative;
-}
-.notif-item:hover {
-  background: #f9fafb;
-}
-.notif-unread {
-  background: #eff6ff;
-}
-.notif-unread:hover {
-  background: #dbeafe;
-}
-
-.notif-item-icon {
-  font-size: 18px;
-  margin-top: 2px;
-}
-.notif-item-body {
-  flex: 1;
-}
-.notif-item-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #111827;
-  margin: 0 0 2px;
-}
-.notif-item-msg {
-  font-size: 12px;
-  color: #6b7280;
-  margin: 0 0 4px;
-  line-height: 1.4;
-}
-.notif-item-time {
-  font-size: 11px;
-  color: #9ca3af;
-  margin: 0;
-}
-
-.notif-unread-dot {
-  width: 8px;
-  height: 8px;
-  background: #3b82f6;
-  border-radius: 50%;
-  flex-shrink: 0;
-  margin-top: 4px;
-}
-
+/* ================================================================
+   BASE
+================================================================ */
 .nb-root {
   position: sticky;
   top: 0;
@@ -468,7 +454,9 @@ onUnmounted(() => clearInterval(interval));
   font-family: "Poppins", sans-serif;
 }
 
-/* Hamburger */
+/* ================================================================
+   HAMBURGER
+================================================================ */
 .nb-hamburger {
   display: none;
   align-items: center;
@@ -494,7 +482,9 @@ onUnmounted(() => clearInterval(interval));
   height: 20px;
 }
 
-/* Search */
+/* ================================================================
+   SEARCH
+================================================================ */
 .nb-search-wrap {
   flex: 1;
   max-width: 420px;
@@ -509,11 +499,13 @@ onUnmounted(() => clearInterval(interval));
   display: flex;
   align-items: center;
   pointer-events: none;
+  z-index: 1;
 }
 .nb-search-icon svg {
   width: 15px;
   height: 15px;
 }
+
 .nb-search-input {
   width: 100%;
   height: 36px;
@@ -547,9 +539,87 @@ onUnmounted(() => clearInterval(interval));
   font-size: 10px;
   color: #9ca3af;
   pointer-events: none;
+  transition: opacity 0.2s;
 }
 
-/* Right */
+/* ── Search dropdown ── */
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  z-index: 200;
+  min-width: 280px;
+}
+.search-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.search-item:hover,
+.search-item-active {
+  background: #f0fdf4;
+}
+.search-item-icon {
+  font-size: 15px;
+  width: 22px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.search-item-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  flex: 1;
+}
+.search-item-path {
+  font-size: 11px;
+  color: #9ca3af;
+  font-family: monospace;
+}
+.search-item-enter {
+  width: 14px;
+  height: 14px;
+  color: #16a34a;
+  flex-shrink: 0;
+}
+.search-hint {
+  padding: 7px 14px;
+  font-size: 11px;
+  color: #9ca3af;
+  background: #f9fafb;
+  border-top: 1px solid #f3f4f6;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+.search-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 14px;
+  font-size: 13px;
+  color: #9ca3af;
+}
+.search-empty svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.search-empty strong {
+  color: #6b7280;
+}
+
+/* ================================================================
+   RIGHT SIDE
+================================================================ */
 .nb-right {
   display: flex;
   align-items: center;
@@ -595,13 +665,13 @@ onUnmounted(() => clearInterval(interval));
   height: 24px;
   background: #e5e7eb;
 }
-
-/* Profile wrap */
 .nb-profile-wrap {
   position: relative;
 }
 
-/* User button */
+/* ================================================================
+   USER BUTTON
+================================================================ */
 .nb-user {
   display: flex;
   align-items: center;
@@ -660,7 +730,9 @@ onUnmounted(() => clearInterval(interval));
   transform: rotate(180deg);
 }
 
-/* Dropdown */
+/* ================================================================
+   PROFILE DROPDOWN
+================================================================ */
 .nb-dropdown {
   position: absolute;
   top: calc(100% + 10px);
@@ -673,8 +745,6 @@ onUnmounted(() => clearInterval(interval));
   overflow: hidden;
   z-index: 100;
 }
-
-/* Dropdown header */
 .dd-header {
   display: flex;
   align-items: center;
@@ -722,14 +792,10 @@ onUnmounted(() => clearInterval(interval));
   border-radius: 99px;
   width: fit-content;
 }
-
 .dd-divider {
   height: 1px;
   background: #f3f4f6;
-  margin: 0;
 }
-
-/* Dropdown items */
 .dd-item {
   display: flex;
   align-items: center;
@@ -770,7 +836,6 @@ onUnmounted(() => clearInterval(interval));
 .dd-item:hover .dd-item-icon {
   background: #e5e7eb;
 }
-
 .dd-logout {
   color: #dc2626;
 }
@@ -785,7 +850,137 @@ onUnmounted(() => clearInterval(interval));
   background: #fee2e2;
 }
 
-/* Dropdown transition */
+/* ================================================================
+   NOTIF DROPDOWN
+================================================================ */
+.notif-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 320px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  overflow: hidden;
+}
+.notif-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+}
+.notif-head-title {
+  font-weight: 600;
+  font-size: 14px;
+  flex: 1;
+}
+.notif-count-badge {
+  font-size: 11px;
+  background: #eff6ff;
+  color: #3b82f6;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+.notif-read-all {
+  font-size: 11px;
+  color: #6b7280;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: "Poppins", sans-serif;
+}
+.notif-read-all:hover {
+  color: #3b82f6;
+}
+.notif-divider {
+  height: 1px;
+  background: #f3f4f6;
+}
+.notif-list {
+  max-height: 320px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+.notif-list::-webkit-scrollbar {
+  width: 4px;
+}
+.notif-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.notif-list::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 999px;
+}
+.notif-list::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+.notif-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 16px;
+  color: #9ca3af;
+  font-size: 13px;
+}
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+}
+.notif-item:hover {
+  background: #f9fafb;
+}
+.notif-unread {
+  background: #eff6ff;
+}
+.notif-unread:hover {
+  background: #dbeafe;
+}
+.notif-item-icon {
+  font-size: 18px;
+  margin-top: 2px;
+}
+.notif-item-body {
+  flex: 1;
+}
+.notif-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 2px;
+}
+.notif-item-msg {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0 0 4px;
+  line-height: 1.4;
+}
+.notif-item-time {
+  font-size: 11px;
+  color: #9ca3af;
+  margin: 0;
+}
+.notif-unread-dot {
+  width: 8px;
+  height: 8px;
+  background: #3b82f6;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+/* ================================================================
+   TRANSITIONS
+================================================================ */
 .dropdown-enter-active {
   transition:
     opacity 0.18s ease,
@@ -805,7 +1000,9 @@ onUnmounted(() => clearInterval(interval));
   transform: translateY(-4px) scale(0.98);
 }
 
-/* Responsive */
+/* ================================================================
+   RESPONSIVE
+================================================================ */
 @media (max-width: 768px) {
   .nb-hamburger {
     display: flex;
@@ -813,9 +1010,7 @@ onUnmounted(() => clearInterval(interval));
   .nb-search-kbd {
     display: none;
   }
-  .nb-user-info {
-    display: none;
-  }
+  .nb-user-info,
   .nb-chevron {
     display: none;
   }
@@ -851,41 +1046,37 @@ onUnmounted(() => clearInterval(interval));
   }
 }
 
+/* ================================================================
+   DARK MODE
+================================================================ */
 .nb-root[data-theme="dark"] {
   background: #111827;
   border-bottom-color: #243044;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
 }
-
 .nb-root[data-theme="dark"] .nb-hamburger {
   color: #cbd5e1;
 }
-
 .nb-root[data-theme="dark"] .nb-hamburger:hover {
   background: rgba(34, 197, 94, 0.12);
   color: #22c55e;
 }
-
 .nb-root[data-theme="dark"] .nb-search-icon {
   color: #64748b;
 }
-
 .nb-root[data-theme="dark"] .nb-search-input {
   background: #1f2937;
   border-color: #243044;
   color: #e5e7eb;
 }
-
 .nb-root[data-theme="dark"] .nb-search-input::placeholder {
   color: #64748b;
 }
-
 .nb-root[data-theme="dark"] .nb-search-input:focus {
   border-color: #22c55e;
   box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
   background: #111827;
 }
-
 .nb-root[data-theme="dark"] .nb-search-kbd,
 .nb-root[data-theme="dark"] .nb-icon-btn,
 .nb-root[data-theme="dark"] .nb-user {
@@ -893,7 +1084,6 @@ onUnmounted(() => clearInterval(interval));
   border-color: #243044;
   color: #cbd5e1;
 }
-
 .nb-root[data-theme="dark"] .nb-icon-btn:hover,
 .nb-root[data-theme="dark"] .nb-user:hover,
 .nb-root[data-theme="dark"] .nb-user.active {
@@ -901,103 +1091,121 @@ onUnmounted(() => clearInterval(interval));
   border-color: #22c55e;
   color: #22c55e;
 }
-
 .nb-root[data-theme="dark"] .nb-divider {
   background: #243044;
 }
-
 .nb-root[data-theme="dark"] .nb-user-name,
 .nb-root[data-theme="dark"] .dd-name {
   color: #bbf7d0;
 }
-
 .nb-root[data-theme="dark"] .nb-user-nisn,
 .nb-root[data-theme="dark"] .nb-chevron,
 .nb-root[data-theme="dark"] .dd-nisn {
   color: #94a3b8;
 }
 
+/* Search dropdown dark */
+.nb-root[data-theme="dark"] .search-dropdown {
+  background: #111827;
+  border-color: #243044;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+.nb-root[data-theme="dark"] .search-item:hover,
+.nb-root[data-theme="dark"] .search-item-active {
+  background: rgba(34, 197, 94, 0.1);
+}
+.nb-root[data-theme="dark"] .search-item-label {
+  color: #e5e7eb;
+}
+.nb-root[data-theme="dark"] .search-item-path {
+  color: #64748b;
+}
+.nb-root[data-theme="dark"] .search-item-enter {
+  color: #22c55e;
+}
+.nb-root[data-theme="dark"] .search-hint {
+  background: #1f2937;
+  border-top-color: #243044;
+  color: #64748b;
+}
+.nb-root[data-theme="dark"] .search-empty {
+  color: #64748b;
+}
+.nb-root[data-theme="dark"] .search-empty strong {
+  color: #94a3b8;
+}
+
+/* Notif + profile dropdown dark */
 .nb-root[data-theme="dark"] .notif-dropdown,
 .nb-root[data-theme="dark"] .nb-dropdown {
   background: #111827;
   border-color: #243044;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
 }
-
 .nb-root[data-theme="dark"] .notif-head-title,
 .nb-root[data-theme="dark"] .notif-item-title {
   color: #e5e7eb;
 }
-
 .nb-root[data-theme="dark"] .notif-count-badge,
 .nb-root[data-theme="dark"] .dd-badge {
   background: rgba(34, 197, 94, 0.18);
   color: #22c55e;
 }
-
 .nb-root[data-theme="dark"] .notif-read-all,
 .nb-root[data-theme="dark"] .notif-item-msg,
 .nb-root[data-theme="dark"] .notif-item-time,
 .nb-root[data-theme="dark"] .notif-empty {
   color: #94a3b8;
 }
-
 .nb-root[data-theme="dark"] .notif-divider,
 .nb-root[data-theme="dark"] .dd-divider {
   background: #243044;
 }
-
 .nb-root[data-theme="dark"] .notif-item:hover,
 .nb-root[data-theme="dark"] .dd-item:hover {
   background: #1f2937;
 }
-
 .nb-root[data-theme="dark"] .notif-unread {
   background: rgba(34, 197, 94, 0.1);
 }
-
 .nb-root[data-theme="dark"] .notif-unread:hover {
   background: rgba(34, 197, 94, 0.16);
 }
-
 .nb-root[data-theme="dark"] .dd-header {
   background: rgba(34, 197, 94, 0.12);
 }
-
 .nb-root[data-theme="dark"] .dd-item {
   color: #cbd5e1;
 }
-
 .nb-root[data-theme="dark"] .dd-item:hover {
   color: #f8fafc;
 }
-
 .nb-root[data-theme="dark"] .dd-item-icon {
   background: #1f2937;
 }
-
 .nb-root[data-theme="dark"] .dd-item:hover .dd-item-icon {
   background: #243044;
 }
-
 .nb-root[data-theme="dark"] .dd-logout {
   color: #f87171;
 }
-
 .nb-root[data-theme="dark"] .dd-logout:hover {
   background: rgba(220, 38, 38, 0.12);
   color: #fca5a5;
 }
-
 .nb-root[data-theme="dark"] .dd-logout .dd-item-icon {
   background: rgba(220, 38, 38, 0.12);
 }
-
 .nb-root[data-theme="dark"] .dd-logout:hover .dd-item-icon {
   background: rgba(220, 38, 38, 0.18);
 }
-
 .nb-root[data-theme="dark"] .nb-notif-dot {
   border-color: #111827;
+}
+.nb-root[data-theme="dark"] .notif-list::-webkit-scrollbar-thumb {
+  background: #374151;
+}
+.nb-root[data-theme="dark"] .notif-list::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
 }
 </style>

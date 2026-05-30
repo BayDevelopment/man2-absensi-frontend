@@ -1,40 +1,20 @@
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from "vue";
-import { useAuthStore } from "../../stores/auth";
+import { ref, computed, onMounted, nextTick } from "vue";
+import { storeToRefs } from "pinia";
+import { useAppearanceStore } from "@/stores/useAppearanceStore";
+import { useAuthStore } from "@/stores/auth";
 import { useRouter } from "vue-router";
 import Swal from "sweetalert2";
+import ForgotPasswordModal from "../../components/ForgotPasswordModal.vue";
 
 // ---------------------------
-// Theme & Language State
+// Theme & Language — dari store
 // ---------------------------
-const themeMode = ref("system"); // 'light' | 'dark' | 'system'
-const language = ref("id"); // 'id' | 'en'
+const showForgotModal = ref(false);
+const appearanceStore = useAppearanceStore();
+const { theme: themeMode, resolvedTheme, language } = storeToRefs(appearanceStore);
 
-const systemDark = ref(window.matchMedia("(prefers-color-scheme: dark)").matches);
-
-onMounted(() => {
-  // Persist preferences
-  const savedTheme = localStorage.getItem("login_theme") || "system";
-  const savedLang = localStorage.getItem("login_lang") || "id";
-  themeMode.value = savedTheme;
-  language.value = savedLang;
-
-  // Watch system preference
-  const mq = window.matchMedia("(prefers-color-scheme: dark)");
-  mq.addEventListener("change", (e) => {
-    systemDark.value = e.matches;
-  });
-});
-
-watch(themeMode, (v) => localStorage.setItem("login_theme", v));
-watch(language, (v) => localStorage.setItem("login_lang", v));
-
-const isDark = computed(() => {
-  if (themeMode.value === "dark") return true;
-  if (themeMode.value === "light") return false;
-  return systemDark.value; // system
-});
-
+const isDark = computed(() => resolvedTheme.value === "dark");
 const isEn = computed(() => language.value === "en");
 
 // ---------------------------
@@ -153,11 +133,14 @@ const logoSekolah = computed(() => {
   const logo = pengaturan.value?.logo;
   if (!logo || typeof logo !== "string") return null;
   const value = logo.trim();
-  const isSafe =
-    value.startsWith("/") || value.startsWith("http://") || value.startsWith("https://");
-  return isSafe ? value : null;
+  if (!value) return null;
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  return `${import.meta.env.VITE_API_URL}/storage/${value}`;
 });
 
+// ---------------------------
+// Toast
+// ---------------------------
 const toast = Swal.mixin({
   toast: true,
   position: "top-end",
@@ -182,6 +165,9 @@ const showToast = (icon, title) =>
     },
   });
 
+// ---------------------------
+// Validation
+// ---------------------------
 const validateNisn = () => {
   if (!nisn.value) {
     nisnError.value = "";
@@ -195,6 +181,7 @@ const validateNisn = () => {
     nisnError.value = "";
   }
 };
+
 const validatePassword = () => {
   if (!password.value) {
     passwordError.value = "";
@@ -302,22 +289,29 @@ const handleKeydown = (e) => {
     <div class="controls-bar">
       <!-- Language toggle -->
       <div class="lang-switcher">
-        <button class="lang-btn" :class="{ active: language === 'id' }" @click="language = 'id'">
+        <button
+          class="lang-btn"
+          :class="{ active: language === 'id' }"
+          @click="appearanceStore.setLanguage('id')"
+        >
           <span class="flag">🇮🇩</span> ID
         </button>
-        <button class="lang-btn" :class="{ active: language === 'en' }" @click="language = 'en'">
+        <button
+          class="lang-btn"
+          :class="{ active: language === 'en' }"
+          @click="appearanceStore.setLanguage('en')"
+        >
           <span class="flag">🇬🇧</span> EN
         </button>
       </div>
 
       <!-- Theme switcher -->
       <div class="theme-switcher">
-        <!-- Light -->
         <button
           class="theme-btn"
           :class="{ active: themeMode === 'light' }"
           :title="t.themeLight"
-          @click="themeMode = 'light'"
+          @click="appearanceStore.setTheme('light')"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="4" />
@@ -327,12 +321,11 @@ const handleKeydown = (e) => {
             />
           </svg>
         </button>
-        <!-- Dark -->
         <button
           class="theme-btn"
           :class="{ active: themeMode === 'dark' }"
           :title="t.themeDark"
-          @click="themeMode = 'dark'"
+          @click="appearanceStore.setTheme('dark')"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path
@@ -342,12 +335,11 @@ const handleKeydown = (e) => {
             />
           </svg>
         </button>
-        <!-- System -->
         <button
           class="theme-btn"
           :class="{ active: themeMode === 'system' }"
           :title="t.themeSystem"
-          @click="themeMode = 'system'"
+          @click="appearanceStore.setTheme('system')"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="2" y="3" width="20" height="14" rx="2" />
@@ -503,7 +495,7 @@ const handleKeydown = (e) => {
         <div class="login-side-divider"></div>
         <p class="login-side-desc">
           {{ isEn ? "Digital Attendance System" : "Sistem Absensi Digital" }}<br />
-          {{ isEn ? "for students & teaching staff" : "untuk siswa &amp; tenaga pengajar" }}
+          {{ isEn ? "for students & teaching staff" : "untuk siswa & tenaga pengajar" }}
         </p>
 
         <div class="login-dot-grid" aria-hidden="true">
@@ -532,25 +524,132 @@ const handleKeydown = (e) => {
                 />
               </template>
               <template v-else>
-                <svg viewBox="0 0 56 56">
+                <svg
+                  viewBox="0 0 80 80"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  style="width: 40px; height: 40px"
+                >
                   <circle
-                    cx="28"
-                    cy="28"
-                    r="26"
-                    fill="none"
-                    stroke="rgba(22,163,74,0.4)"
+                    cx="40"
+                    cy="40"
+                    r="38"
+                    stroke="rgba(255,255,255,0.25)"
                     stroke-width="1.5"
                   />
-                  <path
-                    d="M14 36 Q28 20 42 36"
-                    fill="none"
-                    stroke="#16a34a"
-                    stroke-width="2"
+                  <circle cx="40" cy="40" r="32" stroke="rgba(255,255,255,0.15)" stroke-width="1" />
+                  <rect
+                    x="22"
+                    y="24"
+                    width="36"
+                    height="42"
+                    rx="4"
+                    fill="rgba(255,255,255,0.12)"
+                    stroke="rgba(255,255,255,0.7)"
+                    stroke-width="1.5"
+                  />
+                  <rect
+                    x="32"
+                    y="20"
+                    width="16"
+                    height="8"
+                    rx="3"
+                    fill="rgba(255,255,255,0.15)"
+                    stroke="rgba(255,255,255,0.7)"
+                    stroke-width="1.5"
+                  />
+                  <line
+                    x1="30"
+                    y1="38"
+                    x2="50"
+                    y2="38"
+                    stroke="rgba(255,255,255,0.5)"
+                    stroke-width="1.5"
                     stroke-linecap="round"
                   />
-                  <path d="M28 20 L28 38" fill="none" stroke="#16a34a" stroke-width="1.5" />
-                  <polygon points="28,8 30,15 28,13 26,15" fill="#16a34a" />
-                  <circle cx="28" cy="17" r="2.5" fill="#16a34a" />
+                  <line
+                    x1="30"
+                    y1="45"
+                    x2="50"
+                    y2="45"
+                    stroke="rgba(255,255,255,0.5)"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                  />
+                  <line
+                    x1="30"
+                    y1="52"
+                    x2="44"
+                    y2="52"
+                    stroke="rgba(255,255,255,0.5)"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                  />
+                  <circle
+                    cx="27"
+                    cy="38"
+                    r="3"
+                    fill="rgba(255,255,255,0.15)"
+                    stroke="rgba(255,255,255,0.7)"
+                    stroke-width="1.2"
+                  />
+                  <path
+                    d="M25.5 38l1.2 1.2 2-2"
+                    stroke="white"
+                    stroke-width="1.2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <circle
+                    cx="27"
+                    cy="45"
+                    r="3"
+                    fill="rgba(255,255,255,0.15)"
+                    stroke="rgba(255,255,255,0.7)"
+                    stroke-width="1.2"
+                  />
+                  <path
+                    d="M25.5 45l1.2 1.2 2-2"
+                    stroke="white"
+                    stroke-width="1.2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <circle
+                    cx="27"
+                    cy="52"
+                    r="3"
+                    fill="rgba(255,255,255,0.15)"
+                    stroke="rgba(255,255,255,0.7)"
+                    stroke-width="1.2"
+                  />
+                  <path
+                    d="M25.8 50.8l2.4 2.4M28.2 50.8l-2.4 2.4"
+                    stroke="rgba(255,255,255,0.6)"
+                    stroke-width="1.2"
+                    stroke-linecap="round"
+                  />
+                  <g transform="translate(46, 52) rotate(-45)">
+                    <rect
+                      x="-3"
+                      y="-10"
+                      width="6"
+                      height="12"
+                      rx="1"
+                      fill="rgba(255,255,255,0.2)"
+                      stroke="white"
+                      stroke-width="1.2"
+                    />
+                    <path d="M-3 2 L0 7 L3 2" fill="white" opacity="0.8" />
+                    <line
+                      x1="-3"
+                      y1="-2"
+                      x2="3"
+                      y2="-2"
+                      stroke="rgba(255,255,255,0.5)"
+                      stroke-width="1"
+                    />
+                  </g>
                 </svg>
               </template>
             </div>
@@ -723,7 +822,17 @@ const handleKeydown = (e) => {
               <button
                 type="button"
                 class="login-forgot-link"
-                @click="showToast('info', t.forgotMsg)"
+                :disabled="!pengaturan?.admin_name && !pengaturan?.admin_email"
+                :style="{
+                  opacity: !pengaturan?.admin_name && !pengaturan?.admin_email ? '0.4' : '1',
+                  cursor:
+                    !pengaturan?.admin_name && !pengaturan?.admin_email ? 'not-allowed' : 'pointer',
+                }"
+                @click="
+                  !pengaturan?.admin_name && !pengaturan?.admin_email
+                    ? null
+                    : (showForgotModal = true)
+                "
               >
                 {{ t.forgot }}
               </button>
@@ -774,6 +883,14 @@ const handleKeydown = (e) => {
         </div>
       </div>
     </div>
+
+    <ForgotPasswordModal
+      :show="showForgotModal"
+      :admin-name="pengaturan?.admin_name"
+      :admin-phone="pengaturan?.admin_phone"
+      :admin-email="pengaturan?.admin_email"
+      @close="showForgotModal = false"
+    />
   </main>
 </template>
 

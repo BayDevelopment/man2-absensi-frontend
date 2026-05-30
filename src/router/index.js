@@ -1,7 +1,7 @@
 // src/router/index.js
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "../stores/auth";
-import { setAuthToken, getToken } from "../plugins/axios";
+import { getToken } from "../plugins/axios";
 
 const routes = [
   { path: "/", redirect: "/login" },
@@ -46,7 +46,7 @@ const routes = [
     path: "/verify-otp",
     name: "VerifyOtp",
     component: () => import("@/views/VerifyOtp.vue"),
-    meta: { requiresOtp: true, hideLayout: true }, // ← tambah ini
+    meta: { requiresOtp: true, hideLayout: true },
   },
   {
     path: "/:pathMatch(.*)*",
@@ -62,41 +62,45 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
 
-  // ── Cek OTP DULU sebelum fetchMe ──────────────────────────────────────────
+  // ── OTP guard (cek sebelum fetchMe) ──────────────────────────────────────
   if (to.meta.requiresOtp) {
     const pendingId = auth.pendingUserId || sessionStorage.getItem("pending_otp_user_id");
 
-    if (!pendingId) {
-      return "/login";
-    }
+    if (!pendingId) return "/login";
 
     if (!auth.pendingUserId) {
       auth.pendingUserId = Number(pendingId);
       auth.requireOtp = true;
     }
 
-    auth.isReady = true; // ← pastikan tidak masuk blok fetchMe di bawah
+    auth.isReady = true;
     return true;
   }
-  // ──────────────────────────────────────────────────────────────────────────
 
+  // ── Init auth (hanya sekali) ──────────────────────────────────────────────
   if (!auth.isReady) {
     const token = getToken();
 
     if (token) {
-      setAuthToken(token);
-      await auth.fetchMe();
+      try {
+        await auth.fetchMe();
+      } catch {
+        auth._clearSession();
+        auth.isReady = true;
+      }
     } else {
-      auth._clearSession(); // aman: bukan halaman OTP
+      auth._clearSession();
       auth.isReady = true;
     }
   }
 
+  // ── Guest-only routes (login page) ───────────────────────────────────────
   if (to.meta.requiresGuest) {
     if (auth.isLoggedIn && auth.isSiswa) return "/dashboard";
     return true;
   }
 
+  // ── Auth-required routes ─────────────────────────────────────────────────
   if (to.meta.requiresAuth) {
     if (!auth.isLoggedIn || !auth.isSiswa) {
       auth._clearSession();
@@ -104,11 +108,9 @@ router.beforeEach(async (to) => {
       return { path: "/login", query: { redirect: to.fullPath } };
     }
 
-    // Kalau masih pending OTP, jangan boleh masuk
+    // Masih pending OTP → paksa ke verify-otp
     const pendingId = auth.pendingUserId || sessionStorage.getItem("pending_otp_user_id");
-    if (pendingId) {
-      return "/verify-otp";
-    }
+    if (pendingId) return "/verify-otp";
   }
 
   return true;
